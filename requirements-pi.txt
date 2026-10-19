@@ -1,0 +1,12 @@
+# Runtime dependencies on the Raspberry Pi.
+# Deliberately no torch and no ultralytics: the Pi runs inference through
+# onnxruntime only, so the heavy training stack stays on the PC.
+#
+# Exactly ONE opencv package may be installed. It must be the contrib build,
+# because cv2.aruco lives there and the calibration depends on it.
+pypylon
+opencv-contrib-python
+numpy
+# Runs the exported YOLO26-OBB model (models/shapes_yolo26n_obb.onnx).
+onnxruntime
+PyYAML

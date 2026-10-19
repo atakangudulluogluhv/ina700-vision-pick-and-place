@@ -1,0 +1,24 @@
+# Lab captures (1.3 GB) -- the labelled dataset is rebuilt from them with tools/auto_label.py
+data/
+
+# Local sync backups
+.backup_*/
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+
+# Working notes and course material (kept locally, not published)
+CLAUDE.md
+tools/pi_CLAUDE.md
+*.pdf
+!docs/figures/*.pdf
+reference/
+docs/LAB_CHECKLIST*.md
+docs/LAB_NETWORK_CARD.md
+robot/reference_lab_MainModule.mod
+robot/ServerCommuncatio.sys
+docs/figures/fig*_*.jpg
+docs/figures/crop_*.png

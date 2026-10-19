@@ -1,0 +1,307 @@
+"""Turn the lab captures into a YOLO OBB dataset (Stage B).
+
+Classical CV is used here as a *labelling tool only*. The detector that ships
+with the project is the trained YOLO26-OBB model, so nothing in this file runs
+at pick time and the "an AI model will be trained" requirement stands (T14).
+
+The classification code is the one already under test in ContourShapeDetector;
+only the segmentation strategy differs. Labelling runs offline, so it can
+afford the saturation strategy, which does not lose the plates that touch the
+dark table -- see src/vision/segmentation.py.
+
+Usage:
+    python tools/auto_label.py --captures-dir data/captures --output-dir data/dataset
+    python tools/auto_label.py --review-dir data/review --limit 20
+"""
+
+import argparse
+import copy
+import random
+import sys
+from pathlib import Path
+
+import cv2
+import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from src.core.config import Config  # noqa: E402
+from src.core.interfaces import Detection  # noqa: E402
+from src.vision.aruco_locator import ArucoLocator  # noqa: E402
+from src.vision.color import ColorClassifier  # noqa: E402
+from src.vision.segmentation import SaturationSegmenter  # noqa: E402
+from src.vision.shape_detector_contour import ContourShapeDetector  # noqa: E402
+
+REVIEW_LINE_THICKNESS_PX = 6
+REVIEW_FONT_SCALE = 2.0
+REVIEW_BOX_COLOR_BGR = (0, 255, 255)
+REVIEW_TEXT_COLOR_BGR = (0, 0, 255)
+
+
+class LabelledFrame:
+    """One capture together with the labels found in it."""
+
+    def __init__(
+        self,
+        image_path: Path,
+        detections: list[Detection],
+        skip_reason: str = "",
+    ) -> None:
+        self._image_path = image_path
+        self._detections = detections
+        self._skip_reason = skip_reason
+
+    @property
+    def image_path(self) -> Path:
+        return self._image_path
+
+    @property
+    def detections(self) -> list[Detection]:
+        return self._detections
+
+    @property
+    def is_usable(self) -> bool:
+        """True when nothing disqualified the frame and it carries a label."""
+        return not self._skip_reason and bool(self._detections)
+
+    @property
+    def skip_reason(self) -> str:
+        return self._skip_reason
+
+    def __str__(self) -> str:
+        if self._skip_reason:
+            return f"{self._image_path.name}: skipped ({self._skip_reason})"
+        shapes = ", ".join(sorted(d.shape for d in self._detections))
+        return f"{self._image_path.name}: {len(self._detections)} label(s) [{shapes}]"
+
+
+class AutoLabeler:
+    """Produces the labels of one capture."""
+
+    def __init__(
+        self,
+        detector: ContourShapeDetector,
+        locator: ArucoLocator | None,
+        allowed_shapes: set[str],
+    ) -> None:
+        self._detector = detector
+        self._locator = locator
+        self._allowed_shapes = allowed_shapes
+
+    def label(self, image_path: Path) -> LabelledFrame:
+        """Label one capture, or record why it cannot be used."""
+        frame = cv2.imread(str(image_path))
+        if frame is None:
+            return LabelledFrame(image_path, [], "unreadable")
+        if self._locator is not None and self._locator.locate(frame) is None:
+            return LabelledFrame(image_path, [], "no aruco marker")
+
+        kept = [d for d in self._detector.detect(frame) if d.shape in self._allowed_shapes]
+        if not kept:
+            return LabelledFrame(image_path, [], "no object of an assigned shape")
+        return LabelledFrame(image_path, kept)
+
+    def __str__(self) -> str:
+        return f"AutoLabeler(shapes={sorted(self._allowed_shapes)})"
+
+
+def obb_corners_px(detection: Detection) -> np.ndarray:
+    """Rebuild the four corners of a detection's rotated bounding box."""
+    rect = (
+        (detection.center_x_px, detection.center_y_px),
+        (detection.width_px, detection.height_px),
+        detection.angle_deg,
+    )
+    return cv2.boxPoints(rect)
+
+
+def label_line(detection: Detection, class_index: int, width_px: int, height_px: int) -> str:
+    """One YOLO OBB line: the class, then four corners normalised to [0, 1]."""
+    corners = obb_corners_px(detection)
+    normalised = corners / np.array([width_px, height_px], dtype=np.float32)
+    clipped = np.clip(normalised, 0.0, 1.0).reshape(-1)
+    return " ".join([str(class_index)] + [f"{value:.6f}" for value in clipped])
+
+
+def write_label_file(
+    path: Path,
+    frame: LabelledFrame,
+    class_names: list[str],
+    image_shape,
+) -> None:
+    """Write the label file belonging to one image."""
+    height_px, width_px = image_shape[:2]
+    lines = [
+        label_line(d, class_names.index(d.shape), width_px, height_px)
+        for d in frame.detections
+    ]
+    path.write_text("\n".join(lines) + "\n", encoding="ascii")
+
+
+def write_data_yaml(path: Path, class_names: list[str]) -> None:
+    """Write the dataset descriptor that ultralytics reads."""
+    names = "\n".join(f"  {index}: {name}" for index, name in enumerate(class_names))
+    path.write_text(
+        "# Generated by tools/auto_label.py -- do not edit by hand.\n"
+        f"path: {path.parent.resolve().as_posix()}\n"
+        "train: images/train\n"
+        "val: images/val\n"
+        f"names:\n{names}\n",
+        encoding="ascii",
+    )
+
+
+def split_frames(frames: list[LabelledFrame], val_ratio: float, seed: int):
+    """Shuffle once with a fixed seed, then cut into training and validation."""
+    shuffled = list(frames)
+    random.Random(seed).shuffle(shuffled)
+    val_count = int(round(len(shuffled) * val_ratio))
+    return shuffled[val_count:], shuffled[:val_count]
+
+
+def export_split(
+    frames: list[LabelledFrame],
+    output_dir: Path,
+    split: str,
+    class_names: list[str],
+) -> None:
+    """Copy the images of one split and write their label files."""
+    image_dir = output_dir / "images" / split
+    label_dir = output_dir / "labels" / split
+    image_dir.mkdir(parents=True, exist_ok=True)
+    label_dir.mkdir(parents=True, exist_ok=True)
+
+    for frame in frames:
+        image = cv2.imread(str(frame.image_path))
+        cv2.imwrite(str(image_dir / frame.image_path.name), image)
+        label_path = label_dir / (frame.image_path.stem + ".txt")
+        write_label_file(label_path, frame, class_names, image.shape)
+
+
+def write_review_image(frame: LabelledFrame, review_dir: Path) -> None:
+    """Draw the labels onto the frame so a human can check them quickly."""
+    image = cv2.imread(str(frame.image_path))
+    for detection in frame.detections:
+        corners = obb_corners_px(detection).astype(np.int32)
+        cv2.polylines(image, [corners], True, REVIEW_BOX_COLOR_BGR, REVIEW_LINE_THICKNESS_PX)
+        cv2.putText(
+            image,
+            f"{detection.shape} {detection.color}",
+            (int(detection.center_x_px), int(detection.center_y_px)),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            REVIEW_FONT_SCALE,
+            REVIEW_TEXT_COLOR_BGR,
+            REVIEW_LINE_THICKNESS_PX,
+        )
+    review_dir.mkdir(parents=True, exist_ok=True)
+    cv2.imwrite(str(review_dir / frame.image_path.name), image)
+
+
+def labelling_config(config: Config) -> Config:
+    """Detector configuration with the labelling area band substituted in.
+
+    The live pipeline keeps a far smaller lower bound so that it never misses a
+    plate. Labelling can afford to be stricter, because a wrong label poisons
+    the model while a missing one only costs one training example.
+    """
+    settings = config.section("auto_label")
+    values = copy.deepcopy(config.as_dict())
+    values["detection"]["min_area_px"] = settings.get("min_area_px")
+    values["detection"]["max_area_px"] = settings.get("max_area_px")
+    return Config(values)
+
+
+def build_labeler(config: Config) -> AutoLabeler:
+    """Composition root: every dependency is created here and injected."""
+    settings = config.section("auto_label")
+    segmenter = SaturationSegmenter(
+        min_saturation=int(settings.get("min_saturation")),
+        morph_kernel_px=int(settings.get("morph_kernel_px")),
+        blur_kernel_px=int(settings.get("blur_kernel_px")),
+    )
+    detector = ContourShapeDetector(
+        labelling_config(config),
+        ColorClassifier(config.section("color")),
+        segmenter,
+    )
+    locator = ArucoLocator(config) if bool(settings.get("require_marker")) else None
+    return AutoLabeler(detector, locator, set(settings.get("classes")))
+
+
+def report(paths, usable, skipped, class_names) -> None:
+    """Print the counts a human needs before trusting the labels."""
+    per_class = {name: 0 for name in class_names}
+    for frame in usable:
+        for detection in frame.detections:
+            per_class[detection.shape] += 1
+
+    print(f"[auto_label] {len(paths)} captures -> {len(usable)} usable, {len(skipped)} skipped")
+    print(f"[auto_label] labels per class: {per_class}")
+
+    reasons: dict[str, int] = {}
+    for frame in skipped:
+        reasons[frame.skip_reason] = reasons.get(frame.skip_reason, 0) + 1
+    if reasons:
+        print(f"[auto_label] skip reasons: {reasons}")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Auto-label the lab captures.")
+    parser.add_argument("--captures-dir", default=Path("data/captures"), type=Path)
+    parser.add_argument("--output-dir", default=Path("data/dataset"), type=Path)
+    parser.add_argument(
+        "--review-dir",
+        default=None,
+        type=Path,
+        help="also write annotated copies here for visual review",
+    )
+    parser.add_argument(
+        "--limit",
+        default=0,
+        type=int,
+        help="label only the first N captures (0 = all)",
+    )
+    parser.add_argument("--config", default=None, type=Path)
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(argv)
+    config = Config.load(args.config)
+    settings = config.section("auto_label")
+    class_names = list(settings.get("classes"))
+    labeler = build_labeler(config)
+
+    paths = sorted(args.captures_dir.glob("*.png"))
+    if args.limit:
+        paths = paths[: args.limit]
+    if not paths:
+        print(f"[auto_label] no captures in {args.captures_dir}")
+        return 1
+
+    usable: list[LabelledFrame] = []
+    skipped: list[LabelledFrame] = []
+    for path in paths:
+        frame = labeler.label(path)
+        (usable if frame.is_usable else skipped).append(frame)
+        if frame.is_usable and args.review_dir is not None:
+            write_review_image(frame, args.review_dir)
+
+    report(paths, usable, skipped, class_names)
+    if not usable:
+        return 1
+
+    train, val = split_frames(
+        usable,
+        float(settings.get("val_split_ratio")),
+        int(settings.get("random_seed")),
+    )
+    export_split(train, args.output_dir, "train", class_names)
+    export_split(val, args.output_dir, "val", class_names)
+    write_data_yaml(args.output_dir / "data.yaml", class_names)
+    print(f"[auto_label] wrote {len(train)} train and {len(val)} val frames to {args.output_dir}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

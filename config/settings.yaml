@@ -1,0 +1,438 @@
+# INA700 vision system settings.
+#
+# Every tunable value lives here so that nothing has to be edited in code during
+# the 3-hour lab session.
+# Units are part of the key name: _mm, _px, _deg, _sec.
+
+camera:
+  # Which implementation main.py builds when --camera is not given.
+  default_source: "basler"
+  # Whole-number factor every frame is shrunk by before anything else sees it
+  # (1 = sensor resolution). The network always gets a 416 px image anyway, so
+  # 2 costs no detection accuracy but quarters the work around it (ArUco
+  # search 339 -> 91 ms on the Pi 3). Precision drops from ~0.2 to ~0.4 mm/px.
+  # Set 2 only after the marker reads at full resolution. roi.*_px are in the
+  # downscaled frame's pixels.
+  downscale_factor: 1
+
+  basler:
+    # Milliseconds pypylon waits for a frame before raising a timeout.
+    grab_timeout_ms: 5000
+    # Optional serial number to pick a specific camera when several are attached.
+    # Leave empty to take the first device the transport layer enumerates.
+    serial_number: ""
+    # The camera's stored UserSet ships with a fixed 3 ms exposure, tuned for
+    # whatever light happened to be in the room at the time -- it silently
+    # under-exposes (and loses the ArUco marker's contrast) the moment room
+    # lighting is dimmer. Continuous auto-exposure adapts every frame instead.
+    auto_exposure: true
+
+  file:
+    # Default still image / folder used by FileCamera when --source is omitted.
+    default_path: "docs/figures/sample_lab_frame.jpg"
+    # Frames per second the file source pretends to deliver, so the main loop
+    # does not spin at 100% CPU while replaying a still image.
+    playback_fps: 10.0
+
+# Region of interest, in pixels, cropped before detection.
+# The camera sits on the ceiling rail, so the objects occupy only the white
+# picking paper in the middle of the frame. Cropping raises both accuracy and
+# speed. enabled=false until the real frame size is measured in the lab.
+roi:
+  enabled: false
+  x_px: 0
+  y_px: 0
+  width_px: 0
+  height_px: 0
+
+detection:
+  # Gaussian blur kernel (odd number) applied before thresholding to suppress
+  # the layer lines of the 3D printed plates, which otherwise create noise
+  # contours on the object surface.
+  blur_kernel_px: 5
+
+  # The objects are dark plates on white paper, so Otsu on the grayscale image
+  # is far more robust against changing lab lighting than a fixed HSV range.
+  # invert_binary=true makes the objects white and the paper black.
+  invert_binary: true
+
+  # Contours outside this area range are ignored: below is sensor noise,
+  # above is the paper edge or a shadow band picked up as one huge blob.
+  min_area_px: 800
+  max_area_px: 500000
+
+  # Contours touching the frame border are partly outside the view, so their
+  # corner count and solidity are meaningless.
+  reject_border_touching: true
+
+  # approxPolyDP epsilon as a fraction of the contour perimeter. Larger values
+  # merge nearby vertices; 0.02-0.04 is the usable band for these shapes.
+  approx_epsilon_ratio: 0.030
+
+  # Shape classification thresholds. See docs/LAB_CHECKLIST.md for the table of
+  # expected values per shape.
+  classify:
+    # 4*pi*area / perimeter^2. A perfect circle is 1.0; a hexagon is ~0.91.
+    circle_min_circularity: 0.86
+    # area / convex_hull_area. A convex shape is ~1.0; a 5-pointed star ~0.55.
+    star_max_solidity: 0.75
+    # Vertex count tolerance around the nominal count of each polygon.
+    vertex_tolerance: 1
+
+# The trained YOLO26-OBB detector of the final submission (T14). main.py
+# builds this unless --detector contour is given; the contour detector stays
+# as the lab fallback behind the same interface.
+yolo:
+  # Relative to the project root. The .pt twin next to it is for the PC only.
+  model_path: "models/shapes_yolo26n_obb.onnx"
+  # Order must match the class indices the model was trained with
+  # (auto_label.classes wrote them into data.yaml).
+  class_names:
+    - circle
+    - hexagon
+    - star
+  # Measured on the val set of 2026-09-18: true plates score 0.47-1.0, so a
+  # higher bar would start losing real stars and hexagons. Duplicates are
+  # removed by duplicate_distance_ratio instead.
+  min_confidence: 0.5
+  # Fraction of the box, around its centre, whose colour is read. The corners
+  # of a circle's or star's box lie on the white paper.
+  color_sample_scale: 0.5
+  # A weaker box whose centre is closer to a stronger one than this fraction
+  # of the stronger box's size is a duplicate of the same plate. Plates lie
+  # side by side, never on top of each other, so half a plate is safe.
+  duplicate_distance_ratio: 0.5
+  # Half-size of the patch around a box that is searched for paper, which is
+  # the brightness reference for "is this plate white?" (color.achromatic).
+  paper_search_scale: 1.0
+  # onnxruntime threads. The Pi has four cores; leaving one to the camera
+  # and the operator screen made inference faster *and* steadier (Pi 3 with
+  # the screen running, 2026-09-18: 4 threads 2.4-3.3 s, 3 threads 2.5-2.8 s,
+  # 2 threads ~3.1 s).
+  intra_op_threads: 3
+
+# Corner direction measured inside each detected box (src/vision/
+# orientation_refiner.py). The box angle cannot tell a star's orientation
+# (risk B6), so the angle sent to the robot comes from the plate outline.
+orientation_refine:
+  # A pixel belongs to the plate when it is saturated (coloured plates:
+  # 142-255, paper ~12) ...
+  min_saturation: 90
+  # ... or, for a black or grey plate, darker than the midpoint between the
+  # plate's own brightness and the paper's. A fixed ratio cut grey plates
+  # (V ~0.6 of paper) in half and swung their angle by up to 29 deg.
+  plate_paper_split_ratio: 0.5
+  paper_percentile: 90
+  blur_kernel_px: 5
+  # Half-size of the searched patch as a fraction of the larger box side.
+  search_scale: 0.75
+  # The outline centroid is the pick point (a star's box centre sits ~0.1 of
+  # its radius towards a tip). It is trusted only within this fraction of the
+  # larger box side; a star needs ~0.05, a merged neighbour jumps much further.
+  max_center_shift_ratio: 0.2
+
+# Shape symmetry period in degrees, used to normalise the orientation angle.
+# A circle has no meaningful orientation, so its angle is reported as 0.
+shapes:
+  circle:
+    vertices: 0
+    symmetry_period_deg: 0
+  triangle:
+    vertices: 3
+    symmetry_period_deg: 120
+  square:
+    vertices: 4
+    symmetry_period_deg: 90
+  hexagon:
+    vertices: 6
+    symmetry_period_deg: 60
+  star:
+    vertices: 10
+    symmetry_period_deg: 72
+
+# Colour classification runs on the median hue inside the contour mask, which
+# is immune to the brightness changes that break a fixed HSV threshold.
+# OpenCV hue range is 0-179, not 0-359.
+color:
+  min_saturation: 60
+  min_value: 40
+  # A range whose hue_min is greater than hue_max wraps around 0, which is the
+  # only way to express red in OpenCV's 0-179 hue circle.
+  #
+  # The plates may be reprinted in any colour, so these ranges only decide what
+  # a colour is *called*; an unlisted hue falls back to the nearest range rather
+  # than to unknown. The orange range was measured on the lab captures of
+  # 2026-09-17, where the orange circles sit at hue 9-20 and half of them fell
+  # just outside the red range and were being discarded.
+  ranges:
+    red:
+      hue_min: 170
+      hue_max: 10
+    orange:
+      hue_min: 11
+      hue_max: 25
+    yellow:
+      hue_min: 26
+      hue_max: 34
+    green:
+      hue_min: 35
+      hue_max: 85
+    blue:
+      hue_min: 90
+      hue_max: 130
+    purple:
+      hue_min: 131
+      hue_max: 169
+  unknown_label: "unknown"
+
+  # Plates without hue. User directive (2026-09-18): every colour except white
+  # is picked, so black and grey plates are named and kept; only white is
+  # rejected. Brightness is judged against the paper right around each plate,
+  # because a fixed number would drift with the lab lighting.
+  # Measured 2026-09-17 captures: paper V 119-128, coloured plates V 67-99.
+  achromatic:
+    # The brightest unsaturated pixels near a plate are the paper.
+    paper_percentile: 90
+    # Unsaturated and at least this bright relative to the paper -> white.
+    # A white print looks a little darker than the paper (surface texture,
+    # its own edge shadow): simulated white plates came out at 0.72-0.79, so
+    # 0.8 let them through as grey. The cost of 0.7: a very light grey plate
+    # is indistinguishable from white and is skipped too.
+    white_min_value_ratio: 0.7
+    # Unsaturated and at most this bright relative to the paper -> black;
+    # in between -> grey.
+    black_max_value_ratio: 0.35
+    white_name: "white"
+    grey_name: "grey"
+    black_name: "black"
+
+comm:
+  # The Pi is the server and must be started before the robot connects (T8).
+  host: "192.168.125.2"
+  port: 5000
+  # Seconds accept() waits for the robot client before giving up.
+  accept_timeout_sec: 120.0
+  # Seconds to wait for the robot's ACK before treating the cycle as failed.
+  # A full pick and place takes ~15 s, and with USE_OK_BUTTON in the RAPID
+  # module the robot also waits for the operator's yellow button in between.
+  ack_timeout_sec: 120.0
+  # The station's link thread accepts with this timeout in a loop, so it can
+  # notice a stop request while the robot is not connected yet.
+  accept_poll_sec: 1.0
+  send_encoding: "UTF-8"
+  # The RAPID controller answers in latin-1.
+  receive_encoding: "latin-1"
+  receive_buffer_bytes: 4094
+
+  # RAPID's string type holds at most 80 characters and silently truncates
+  # longer ones (T16), so every outgoing message is validated against this.
+  rapid_string_max_length: 80
+
+  # Outgoing message layout. The RAPID routine is already written and we do not
+  # know which layout it parses, so it is a template rather than hard-coded.
+  # Available fields: id, shape, shape_upper, color, color_upper,
+  #                   x_mm, y_mm, z_mm, rz_deg
+  # Simplest RAPID parsing: IF msg = "CIRCLE" THEN pick_circle;
+  # Final protocol, parsed by robot/MainModule.mod (decided 2026-09-18, A20).
+  # The robot answers ACK;<id>;OK or ACK;<id>;FAIL.
+  message_template: "PICK;{id};{shape};{color};{x_mm};{y_mm};{z_mm};{rz_deg}"
+  # Lab-1 shape-only layout (robot/archive/), kept for a one-line switch:
+  # message_template: "{shape_upper}"
+
+  # Substring that marks a successful acknowledgement from the robot.
+  ack_success_token: "OK"
+
+cycle:
+  # Assignment limit: inference must stay under 3 seconds and the measured
+  # value must be printed (T5).
+  inference_time_limit_sec: 3.0
+  # A pick may be retried this many times before the object is skipped.
+  max_pick_retries: 2
+  # Seconds the auto mode waits between two sends so the robot can finish its
+  # routine before the next shape is announced.
+  send_interval_sec: 2.0
+
+  # ---- Station (src/app/station.py, Grade level III) ----
+  # A cycle is complete when this many plates have been placed (T3: 2 cycles
+  # of 3 plates are examined).
+  objects_per_cycle: 3
+  # How long to wait for a frame taken after the operator's command. Worst
+  # case is two frame times (the frame in the model must finish first); a
+  # Pi 3 needs ~4 s per frame with the screen running, so 8 s was too short.
+  search_timeout_sec: 15.0
+  # Extra wait on top of comm.ack_timeout_sec before a job counts as lost.
+  result_margin_sec: 10.0
+  # No vacuum sensor (A18): a pick is verified by looking. After the robot's
+  # OK, a plate of the same shape still within verify_radius_mm of the
+  # picked spot means the pick failed and is retried.
+  verify_pick: true
+  verify_timeout_sec: 15.0
+  verify_radius_mm: 15.0
+
+# The single ArUco marker glued to the top-centre of the picking paper. It is
+# both the origin and the axis reference of wobj2, so every pick position
+# is expressed relative to it rather than to the raw camera frame.
+aruco:
+  dictionary: "DICT_5X5_100"
+  marker_length_mm: 100.0
+
+# Pixel-to-millimetre mapping, relative to the ArUco marker (see
+# src/transform/coordinate_mapper.py). The place location is fixed and lives
+# in the RAPID routine, so only the pick side needs a live transform.
+coordinate:
+  # Pixel -> mm strategy (src/transform/coordinate_mapper.py):
+  #   ratio      -- the taught single-marker ratio; assumes the camera looks
+  #                 exactly straight down.
+  #   homography -- perspective transform from the marker's 4 corners. Chosen
+  #                 2026-10-07: the marker's sides differ by 1.1 % in the image
+  #                 (camera slightly tilted), which gave the ratio method
+  #                 0.5-5 mm errors changing direction across the paper.
+  method: homography
+  # Z of the suction cup on top of a plate, in wobj2 (the picking paper).
+  # 2026-10-07 (late): wobj2 taught on the paper's corners, oframe
+  # [626.676, -153.111, 385] rot [1,0,0,0]; plate top = world 391.75
+  # (jogged earlier) -> 6.8 above the new origin.
+  # robot/MainModule.mod refuses anything below PICK_Z_MIN_MM (-10).
+  pick_z_mm: 6.8
+  # The camera's pixel axes and the robot's wobj2 axes, paired up in the
+  # lab (2026-09-28): the camera is mounted turned, so camera X runs against
+  # robot X. Flip whichever of these does not match reality instead of
+  # touching the transform code.
+  invert_x: true
+  invert_y: false
+  swap_xy: false
+  # Position of the marker centre in wobj2, added to every pick. 0/0 while
+  # wobj2's origin is on the marker. If wobj2 is taught elsewhere (e.g. on
+  # the paper's corners), jog tool1 onto the marker centre with wobj2
+  # selected and copy the pendant's X/Y here.
+  marker_offset_x_mm: 206.79
+  marker_offset_y_mm: 153.91
+
+# Reduces a detected orientation to the angle the wrist should actually turn
+# to, using each shape's rotational symmetry (see src/transform/orientation.py).
+orientation:
+  # The wrist angle treated as "no rotation needed".
+  wrist_neutral_deg: 0.0
+  # Largest turn away from wrist_neutral_deg the wrist may be asked to make.
+  # The robot is an ABB IRB 1600-6/1.2 whose axis 6 range is +/-400 deg, so the
+  # wrist is never the binding constraint here: the shape symmetry periods are
+  # at most 120 deg, which means the chosen turn is always within +/-60 deg.
+  # 200 is kept as a conservative guard rather than the datasheet maximum.
+  wrist_limit_deg: 200.0
+  # Heading of each place cavity in the same convention as the plate angle
+  # (corner/tip direction, counter-clockwise in wobj2). Measured in the
+  # lab by laying a plate exactly in its cavity's pose on the paper and
+  # reading the angle the program prints (docs/ROBOT_SETUP.md, step 5).
+  # Re-measured 2026-10-07 after the wobj2/homography changes: GUI read
+  # star +16.2, hexagon +4.4 on top of the old 10.7 / -3.0.
+  place_offset_deg:
+    circle: 0.0
+    hexagon: 1.4
+    star: 26.9
+
+# Offline dataset labelling (tools/auto_label.py). None of this runs at pick
+# time: the detector that ships is the trained YOLO26-OBB model (T14), and
+# classical CV is used only to produce the labels that model is trained on.
+auto_label:
+  # The plates are the only saturated thing in the scene. Measured on the
+  # 2026-09-17 captures: plates 142-255, paper / dark table / printed ArUco
+  # marker all near 12. Grayscale Otsu could not separate them because the dark
+  # table merged with the plates, which cost about 40% of the objects.
+  min_saturation: 90
+  morph_kernel_px: 9
+
+  # Smoothing applied to the saturation channel before thresholding. Without
+  # it a ragged mask edge inflates the contour perimeter and circularity
+  # collapses, which silently costs every circle its label (measured: 0.823
+  # unblurred against the 0.86 threshold, 0.896 blurred).
+  blur_kernel_px: 5
+
+  # Area band of one plate at the mounted camera height. Kept wide so a plate
+  # lying near the edge of the paper still counts.
+  min_area_px: 4000
+  max_area_px: 400000
+
+  # Only the assigned shapes may be labelled. A model that can see the other
+  # two would break the "shall not detect" requirement (T1, A1).
+  classes:
+    - circle
+    - hexagon
+    - star
+
+  # Frames whose marker is missing are the pre-marker test shots of 2026-09-17
+  # and do not belong in the dataset.
+  require_marker: true
+
+  val_split_ratio: 0.2
+  random_seed: 0
+
+# Offline YOLO26-OBB training on the PC (tools/train_yolo.py). The Pi never
+# trains and has no torch; it only runs the exported ONNX file.
+training:
+  # Pretrained starting point. A bare name makes ultralytics download it into
+  # the current directory, i.e. into the OneDrive project; kept with the runs.
+  base_weights: "C:/Users/ataka/INA700_runs/base_weights/yolo26n-obb.pt"
+  # Kept outside OneDrive: every epoch rewrites checkpoints and plots, which
+  # would otherwise be uploaded to the cloud over and over.
+  runs_dir: "C:/Users/ataka/INA700_runs"
+  run_name: "yolo26n_obb_shapes"
+  dataset_yaml: "C:/Users/ataka/INA700_dataset/data.yaml"
+  # Measured on the labels: a plate side is ~278 px in the 2448 px frame, so
+  # 640 still leaves ~73 px per side. 416 would leave ~47 px.
+  image_size_px: 640
+  epochs: 150
+  # 0 disables early stopping. YOLO26 shifts its loss weight from the
+  # one-to-many head to the shipped one-to-one head over the full epoch count;
+  # with patience 30 training stopped at epoch ~60, before that shift was done.
+  patience_epochs: 0
+  batch_size: 16
+  # Windows spawns dataloader workers as processes; more than a few only adds
+  # start-up cost on a 149-frame dataset.
+  dataloader_workers: 4
+  random_seed: 0
+
+  # Augmentation. The plates in the captures almost always keep one colour per
+  # shape (risk B13), so the model could learn colour instead of outline.
+  # hue_shift_fraction=0.5 spins hue through the whole circle, which removes
+  # colour as a shortcut; colour is reported by src/vision/color.py anyway.
+  augment:
+    hue_shift_fraction: 0.5
+    saturation_gain_fraction: 0.7
+    value_gain_fraction: 0.4
+    # The camera looks straight down, so any in-plane rotation and both flips
+    # produce a physically possible scene.
+    rotation_deg: 180.0
+    flip_up_down_probability: 0.5
+    flip_left_right_probability: 0.5
+
+  # Where the finished model is copied for delivery (T9: the trained model
+  # must be inside the submission ZIP) and for the Pi.
+  export_dir: "models"
+  # Training stays at image_size_px; only the exported graph is smaller. The
+  # network is fully convolutional, so the two may differ, and measuring both
+  # on the val split (2026-09-23) found no accuracy to pay for the speed:
+  #
+  #   input | Pi 3 session.run | found of 74 | wrong class | centre error
+  #     640 |         1373 ms  |     70      |      0      |   3.0 px
+  #     512 |          880 ms  |     65      |      0      |   2.8 px
+  #     416 |          610 ms  |     72      |      0      |   3.3 px
+  #
+  # (3.3 px is ~0.5 mm on the paper, and the reported angle is measured from
+  # the plate outline, so it does not move with this at all: drift vs 640 was
+  # 0.0 deg median, 3.5 deg worst.) The 512 dip is threshold noise, not a
+  # ranking: a few boxes sit just under yolo.min_confidence there.
+  # Back to 640 is this one line plus `python tools/train_yolo.py --export-only`.
+  export_image_size_px: 416
+
+# Operator screen (src/gui/hmi.py).
+hmi:
+  station_name: "INA700  |  CELL 01  |  VISION PICK & PLACE"
+  # How often the screen drains the UI queue. 50 ms keeps buttons snappy
+  # while leaving the Pi's CPU to the model.
+  refresh_ms: 50
+  max_events_per_refresh: 50
+  # No new image for this long turns the CAMERA lamp red.
+  image_stale_sec: 5.0
+  event_log_lines: 300
+  # Inference samples in the running average on the performance panel.
+  kpi_average_window: 20
