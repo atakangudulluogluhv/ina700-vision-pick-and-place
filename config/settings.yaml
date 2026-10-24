@@ -301,12 +301,13 @@ coordinate:
   invert_x: true
   invert_y: false
   swap_xy: false
-  # Position of the marker centre in wobj2, added to every pick. 0/0 while
+  # Position of the marker centre in wobj2, added to every pick (re-touched
+  # 2026-10-19: the paper had shifted ~9 mm since 10-07). 0/0 while
   # wobj2's origin is on the marker. If wobj2 is taught elsewhere (e.g. on
   # the paper's corners), jog tool1 onto the marker centre with wobj2
   # selected and copy the pendant's X/Y here.
-  marker_offset_x_mm: 206.79
-  marker_offset_y_mm: 153.91
+  marker_offset_x_mm: 215.57
+  marker_offset_y_mm: 156.24
 
 # Reduces a detected orientation to the angle the wrist should actually turn
 # to, using each shape's rotational symmetry (see src/transform/orientation.py).
@@ -323,12 +324,12 @@ orientation:
   # (corner/tip direction, counter-clockwise in wobj2). Measured in the
   # lab by laying a plate exactly in its cavity's pose on the paper and
   # reading the angle the program prints (docs/ROBOT_SETUP.md, step 5).
-  # Re-measured 2026-10-07 after the wobj2/homography changes: GUI read
-  # star +16.2, hexagon +4.4 on top of the old 10.7 / -3.0.
+  # Last re-measured 2026-10-19 with each plate seated by hand in its
+  # cavity's pose: GUI read star -11.5, hexagon -3.1 on top of 26.9 / 1.4.
   place_offset_deg:
     circle: 0.0
-    hexagon: 1.4
-    star: 26.9
+    hexagon: -1.7
+    star: 15.4
 
 # Offline dataset labelling (tools/auto_label.py). None of this runs at pick
 # time: the detector that ships is the trained YOLO26-OBB model (T14), and
