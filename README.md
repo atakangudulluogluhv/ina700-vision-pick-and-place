@@ -1,5 +1,7 @@
 # Vision-Guided Pick and Place
 
+[![tests](https://github.com/atakangudulluogluhv/ina700-vision-pick-and-place/actions/workflows/tests.yml/badge.svg)](https://github.com/atakangudulluogluhv/ina700-vision-pick-and-place/actions/workflows/tests.yml)
+
 Final project for INA700 at University West. A Raspberry Pi 4 with a Basler
 camera finds plastic plates on a sheet of paper, works out where they are and
 how they are rotated, and sends the targets to an ABB IRB 1600 robot, which
@@ -111,6 +113,8 @@ python -m src.app.station --camera file --source <image>   # terminal 1
 python tools/fake_robot_client.py --host 127.0.0.1         # terminal 2, stands in for the robot
 python -m pytest
 ```
+
+The tests (pytest, no camera or robot needed) also run on every push through GitHub Actions.
 
 | Tool | Purpose |
 |---|---|
