@@ -16,8 +16,7 @@ tools/pi_CLAUDE.md
 *.pdf
 !docs/figures/*.pdf
 reference/
-docs/LAB_CHECKLIST*.md
-docs/LAB_NETWORK_CARD.md
+docs/SINAV_GUNU.md
 robot/reference_lab_MainModule.mod
 robot/ServerCommuncatio.sys
 docs/figures/fig*_*.jpg

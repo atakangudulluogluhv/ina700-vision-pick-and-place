@@ -10,26 +10,25 @@ paper `wobj_pick` and the mould `wobj2`); the module and every document now use 
 | Name | What it is | Defined from |
 |---|---|---|
 | **`wobj1`** | Place fixture (the black mould) | The mould's own three corners (Step 2B) |
-| **`wobj2`** | Picking paper | Origin moved onto the ArUco marker centre (Step 2) |
+| **`wobj2`** | Picking paper | The paper's own three corners, top-left = origin (Step 2) |
 | **`tool1`** | Vacuum gripper | TCP `[93.66, -36.08, 202.46]` mm, 1.1 kg |
 
 Signals: vacuum **`doValve2`**, yellow button **`diOkButton`**, lamp **`doYellowLamp`**.
 Place points: circle `p20/p30`, star `p40/p50`, hexagon `p60/p70` (approach / grip), all in `wobj1`.
-`robot/robot_code_final.mod` is the module exported from the robot at the end of that lab.
 
-## Status (2026-10-07)
+## Status (2026-10-19, system working end to end)
 
 | Step | | Result |
 |---|---|---|
 | 0 — Back up old module | ⏭️ skipped | The robot had no module loaded |
-| 1 — Load the module | 🟡 | Loaded (= `robot/robot_code_final.mod`), but with the older `wobj2` (see Step 2) |
-| 2 — `wobj2` on the paper | ✅ | 2026-10-07: taught on the paper's corners (top-left origin), `[[626.676, -153.111, 385],[1,0,0,0]]`. Marker centre in this frame (206.79, 153.91) → Pi `coordinate.marker_offset_x/y_mm`. Picks land centred |
+| 1 — Load the module | ✅ | `robot/MainModule.mod` loaded. On 2026-10-19 the robot had reverted to an older module (wrong `wobj2` → error 50050 "outside reach") — **check at every start** |
+| 2 — `wobj2` on the paper | ✅ | Paper corners, `[[626.676, -153.111, 385],[1,0,0,0]]`; marker centre in it **(215.57, 156.24)** → Pi `coordinate.marker_offset_x/y_mm` |
 | 2B — `wobj1` on the mould + place points | ✅ | Mould corners taught, `p20…p70` re-taught |
 | 3 — Dry run | — | Not recorded; live picks were run directly |
-| 4 — `TOOL_RZ_SIGN` | 🟡 | Suspect: hexagon at rz 24° did not seat (wrong sign gives 2×rz). Test with a hexagon turned ~15° |
-| 5 — Cavity angles | ✅ | Re-measured 2026-10-07: star **26.9**, hexagon **1.4**, circle 0. `pPickTemplate` now equals the place orientation (was 13.6° off) |
-| 6 — Real Z | ✅ | `pick_z_mm: 6.8` in the paper-corner `wobj2`; `PICK_Z_MIN_MM := -10` |
-| 7 — Full run | 🟡 | Picks centred; star placed well, hexagon sometimes off → Step 4. Note `PICK_REACH_MM` 400 vs paper x up to ~405 |
+| 4 — `TOOL_RZ_SIGN` | ✅ | `-1` kept; turned plates seat correctly |
+| 5 — Cavity angles | ✅ | 2026-10-19: star **15.4**, hexagon **-1.7**, circle 0. `pPickTemplate` equals the place orientation |
+| 6 — Real Z | ✅ | `pick_z_mm: 6.8`; `PICK_Z_MIN_MM := -10` |
+| 7 — Full run | ✅ | Picks centred (star too), placements correct |
 
 Also measured: `coordinate.invert_x: true`, `invert_y: false`, `swap_xy: false` (the camera is mounted turned).
 
@@ -45,7 +44,7 @@ values whose `trans` field is greyed out on the pendant.
 ## Step 0 — Do not lose the old module
 
 Only if a module you did not write is loaded: Pendant → **Program Editor** → **Modules** →
-**File → Save Module As...** → USB stick → add it to `robot/archive/` at home.
+**File → Save Module As...** → USB stick, and keep it.
 
 ## Step 1 — Load the module
 
@@ -57,21 +56,28 @@ Only if a module you did not write is loaded: Pendant → **Program Editor** →
 4. Check that the loaded `wobj1`, `wobj2` and `p20…p70` match the repo file (they are `TASK PERS` /
    `CONST`; a reload restores the file's values).
 
-## Step 2 — Put `wobj2` on the marker
+## Step 2 — `wobj2` on the paper, marker offset on the Pi
 
-Follow **`docs/OFFSET_CALIBRATION.md`**: axis directions (step 4), then move `wobj2.oframe.trans`
-onto the marker centre (step 5B), then verify (step 6).
+`wobj2` is fixed to the robot; the camera measures relative to the marker. The Pi adds the marker's
+position in `wobj2` (`coordinate.marker_offset_x/y_mm`) to every pick.
+
+1. Only if the paper was **turned** or `wobj2` is lost: Pendant → Jogging → tool `tool1` → `wobj2` →
+   **Define...** → 3 points on the paper's corners: top-left (origin), top-right (X), bottom-left (Y).
+2. Jog `tool1` with `wobj2` selected onto the **marker centre**, read X/Y.
+3. If they differ from `marker_offset_x/y_mm` by more than ~1 mm, write the new values and restart the program.
+
+Axis directions (`invert_x/invert_y/swap_xy`) are explained in `docs/OFFSET_CALIBRATION.md` step 4.
 
 If live picks are still off-centre afterwards, check the **kind** of error before changing anything:
 
 | Error | Cause | Fix |
 |---|---|---|
-| Same direction and size everywhere on the paper | `wobj2` origin not exactly on the marker | Add it to `wobj2.oframe.trans` (see below) |
+| Same direction and size everywhere on the paper | Paper/marker moved since `marker_offset` was measured | Step 2, items 2–3 |
 | Grows with distance from the marker | Marker turned against `wobj2`'s X axis, or marker not 100 mm | Measure the marker; redefine `wobj2` along the marker |
 | Changes when the wrist turns | `tool1` TCP | Recalibrate the TCP |
 
-To add a constant correction: measure it on the plate along the **marker's** axes (red = X, blue = Y
-on screen). Because `invert_x: true`, add **−X** and **+Y** to `wobj2.oframe.trans`.
+Prefer re-touching the marker centre (items 2–3) over computing a correction by hand: the touched
+value needs no sign conversion.
 
 ## Step 2B — Define the mould as `wobj1` (done 2026-09-28)
 
@@ -92,8 +98,9 @@ The points and the cavity angles on the Pi follow `wobj1` untouched. The camera 
 
 ## Step 3 — Dry run (in the air)
 
-Set `config/settings.yaml` → `coordinate.pick_z_mm: 0.0` **temporarily**. The robot then "picks"
-~200 mm above the paper and cannot hit anything. Put it back to **`-195.83`** afterwards.
+Set `config/settings.yaml` → `coordinate.pick_z_mm: 60.0` **temporarily** (`wobj2`'s Z = 0 is the paper
+surface, so `0.0` would press into the paper). The robot then "picks" ~50 mm above the plates. Put it
+back to **`6.8`** afterwards.
 
 1. On the Pi: `python -m src.app.station --camera basler --fullscreen --no-verify` (server **first**;
    the ROBOT lamp goes **WAITING** → **CONNECTED**). Choose shape + colour → **PICK SELECTED**.
@@ -108,7 +115,7 @@ Set `config/settings.yaml` → `coordinate.pick_z_mm: 0.0` **temporarily**. The 
    or rotated the wrong way by twice the angle?
 3. If it turned the wrong way: `MainModule.mod` → `CONST num TOOL_RZ_SIGN := -1;` → **`1`**, save.
 
-## Step 5 — Cavity angles (`orientation.place_offset_deg`) (done 2026-09-28)
+## Step 5 — Cavity angles (`orientation.place_offset_deg`) (done 2026-10-19)
 
 1. Take a plate out of its cavity **without turning it** and lay it on the paper facing the same way.
    Keep **only this plate + the marker** on the paper.
@@ -120,12 +127,12 @@ Set `config/settings.yaml` → `coordinate.pick_z_mm: 0.0` **temporarily**. The 
 
 Not needed for the circle.
 
-## Step 6 — Real Z (`coordinate.pick_z_mm`) (done 2026-09-28: −195.83)
+## Step 6 — Real Z (`coordinate.pick_z_mm`) (done 2026-10-07: 6.8)
 
 1. Pendant: **Jogging** → tool `tool1`, work object **`wobj2`**.
 2. Lower the suction cup slowly until it **touches the top surface** of a plate on the paper.
 3. Read **Z** → write it into `pick_z_mm`.
-4. The module **rejects anything below −215** (`PICK_Z_MIN_MM`).
+4. The module **rejects anything below −10** (`PICK_Z_MIN_MM`).
 
 ## Step 7 — Full run
 

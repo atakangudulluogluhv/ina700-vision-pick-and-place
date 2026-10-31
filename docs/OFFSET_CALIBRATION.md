@@ -8,10 +8,10 @@
 > pick wobj = **`wobj2`** (the paper), place wobj = **`wobj1`** (the mould), vacuum = **`doValve2`**,
 > yellow button = **`diOkButton`**.
 >
-> **Done on 2026-09-28:** axis directions `invert_x: true`, `invert_y: false`, `swap_xy: false`;
-> `wobj2.oframe.trans` moved onto the marker (5B) and verified ~0,0 at the marker. Live picks were then
-> still a few mm off-centre by the same amount everywhere, corrected twice to **`814.441, 3.83`**
-> (in `robot/MainModule.mod`, not yet loaded on the robot). Next: load it and verify with a pick.
+> **Current method (2026-10-19):** `wobj2` is taught on the paper's corners and stays fixed; the Pi adds
+> `coordinate.marker_offset_x/y_mm` (the marker centre touched in `wobj2`, now **215.57 / 156.24**) to
+> every position. The `oframe.trans` shifting in step 5B below is the older route and no longer used.
+> Axis directions (step 4) are still valid: `invert_x: true`, `invert_y: false`, `swap_xy: false`.
 
 ---
 
@@ -32,19 +32,6 @@ That constant difference is called the **offset**.
    │    distance between them = OFFSET
    Y
 ```
-
----
-
-## ⚠️ Know this first
-
-`settings.yaml` has **no `offset_x_mm` / `offset_y_mm` fields** (as of 2026-09-17).
-If step 5 finds a non-zero offset there are two ways:
-
-- **If the code has been added:** you will see these two fields under `coordinate:` in `settings.yaml` → enter the values.
-- **If not:** the **pendant method** in step 5B fixes it on the robot side without touching code.
-
-If you write a field under `coordinate:` that the code does not read, **nothing happens and no error is raised.**
-Do not write it and assume it is fixed; that is why step 6 verifies.
 
 ---
 

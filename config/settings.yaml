@@ -69,8 +69,8 @@ detection:
   # merge nearby vertices; 0.02-0.04 is the usable band for these shapes.
   approx_epsilon_ratio: 0.030
 
-  # Shape classification thresholds. See docs/LAB_CHECKLIST.md for the table of
-  # expected values per shape.
+  # Shape classification thresholds for the contour fallback detector; tune them
+  # live with tools/tune_thresholds.py.
   classify:
     # 4*pi*area / perimeter^2. A perfect circle is 1.0; a hexagon is ~0.91.
     circle_min_circularity: 0.86
@@ -236,7 +236,7 @@ comm:
   # Final protocol, parsed by robot/MainModule.mod (decided 2026-09-18, A20).
   # The robot answers ACK;<id>;OK or ACK;<id>;FAIL.
   message_template: "PICK;{id};{shape};{color};{x_mm};{y_mm};{z_mm};{rz_deg}"
-  # Lab-1 shape-only layout (robot/archive/), kept for a one-line switch:
+  # Lab-1 shape-only layout, kept for a one-line switch:
   # message_template: "{shape_upper}"
 
   # Substring that marks a successful acknowledgement from the robot.

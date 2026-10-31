@@ -124,6 +124,7 @@ The tests (pytest, no camera or robot needed) also run on every push through Git
 | `tools/aruco_probe.py` | Diagnose marker detection (dictionary, print quality, exposure) |
 | `tools/fake_robot_client.py` | Python version of `robot/MainModule.mod` for socket tests |
 | `tools/setup_pi.sh` | Pi setup: Python packages and the static IP on the robot subnet |
+| `tools/make_submission.py` | Build and verify the hand-in ZIP (program, model, Pack-and-Go) |
 
 ## Setup
 
