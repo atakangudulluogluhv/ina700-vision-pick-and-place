@@ -12,7 +12,7 @@ constraints:
                          to survive a change of lighting between home and lab.
     SaturationSegmenter  Saturation channel. Used offline by
                          tools/auto_label.py, where recall matters more than
-                         speed. On the 2026-09-17 captures the plates measure a
+                         speed. On the lab captures the plates measure a
                          median saturation of 142-255 while the paper, the dark
                          table and the printed ArUco marker all sit near 12, so
                          the table can no longer merge with a plate and cost it
@@ -63,7 +63,7 @@ class SaturationSegmenter(Segmenter):
 
     The plates are the only saturated thing in the scene, so this ignores the
     white paper, the dark table and the grey printed marker in one step and
-    needs no assumption about which colour a plate happens to be (A21).
+    needs no assumption about which colour a plate happens to be.
     """
 
     def __init__(self, min_saturation: int, morph_kernel_px: int, blur_kernel_px: int) -> None:
@@ -77,7 +77,7 @@ class SaturationSegmenter(Segmenter):
 
         # Blurring before the threshold is not cosmetic. Circularity divides by
         # the squared perimeter, so a ragged mask edge inflates the perimeter
-        # and collapses the measurement: on the 2026-09-17 captures an orange
+        # and collapses the measurement: on the lab captures an orange
         # circle scored 0.823 unblurred against a threshold of 0.86 and was
         # thrown away, while the same circle scores 0.896 once smoothed.
         saturation = cv2.GaussianBlur(

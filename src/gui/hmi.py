@@ -123,7 +123,7 @@ class HmiWindow:
 
         view_panel = panel(top, "Picking area - live", self._fonts)
         view_panel.pack(side="left", fill="both", expand=True, padx=(0, theme.PAD_PX))
-        # Vision performance sits under the image it belongs to (T5: the
+        # Vision performance sits under the image it belongs to (the
         # inference time is always in view).
         kpi_strip = tk.Frame(view_panel.body, bg=theme.PANEL)
         kpi_strip.pack(side="bottom", fill="x", pady=(theme.PAD_PX // 2, 0))

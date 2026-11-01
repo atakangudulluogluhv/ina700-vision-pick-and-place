@@ -1,16 +1,16 @@
 """TCP server the ABB robot connects to as a client.
 
 Role split comes straight from the assignment: the Pi is the server, the robot
-is the client (trap T8), which is why the RAPID side calls
+is the client, which is why the RAPID side calls
 RobotAsClientConnect from ServerCommuncatio.sys. Consequences of that module,
-which we are not allowed to edit (trap T18):
+which we are not allowed to edit:
 
   * The server must already be listening before the robot program is started.
   * There is no framing. SocketReceive \\Str reads whatever arrived, so the
     exchange has to stay a strict request/response lockstep -- one message out,
     one answer back -- and no newline is appended.
-  * A RAPID string holds 80 characters and truncates silently beyond that
-    (trap T16), so every outgoing message is checked before it is sent.
+  * A RAPID string holds 80 characters and truncates silently beyond that,
+    so every outgoing message is checked before it is sent.
 
 Encodings follow the course's reference socket example: UTF-8 out, latin-1 in.
 """

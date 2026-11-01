@@ -1,8 +1,8 @@
-"""Turn the lab captures into a YOLO OBB dataset (Stage B).
+"""Turn the lab captures into a YOLO OBB dataset.
 
 Classical CV is used here as a *labelling tool only*. The detector that ships
 with the project is the trained YOLO26-OBB model, so nothing in this file runs
-at pick time and the "an AI model will be trained" requirement stands (T14).
+at pick time and the "an AI model will be trained" requirement stands.
 
 The classification code is the one already under test in ContourShapeDetector;
 only the segmentation strategy differs. Labelling runs offline, so it can

@@ -1,6 +1,6 @@
 """Identifies the ArUco marker actually lying on the picking paper.
 
-The lab session of 2026-09-22 lost hours to a marker that detectMarkers()
+A lab session lost hours to a marker that detectMarkers()
 never returned, and two very different causes look identical from the outside:
 
   * the printed marker belongs to another dictionary than aruco.dictionary,
@@ -45,7 +45,7 @@ BLACK_LEVEL_MAX = 60
 # be recovered reliably, whatever the dictionary.
 MIN_INK_CONTRAST = 90
 # A correctly exposed frame of this station puts the white paper around 120
-# (measured 2026-09-18). A candidate whose white stays under it says the frame
+# (measured in the lab). A candidate whose white stays under it says the frame
 # is dark, not that the sheet is bad.
 PAPER_LEVEL_MIN = 120
 # Relaxed parameters also "decode" grain and screw heads. A hit this much

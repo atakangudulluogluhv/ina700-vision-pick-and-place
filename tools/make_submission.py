@@ -1,13 +1,13 @@
-"""Build the hand-in ZIP the assignment demands after the examination (Stage G).
+"""Build the hand-in ZIP the assignment demands after the examination.
 
 The assignment accepts exactly one file, FinalProject_<StudentName>.zip, holding
 the complete program files, the trained AI model and a Pack-and-Go file of the
 robot station taken at the examination. A submission that misses any of them
-"will be reported as failed. No resubmission is allowed" (T9), so this tool
+"will be reported as failed. No resubmission is allowed", so this tool
 refuses to write the real archive unless every part is present, and re-opens
 what it wrote to prove it.
 
-The Pack-and-Go has to come from the examination itself (T15), which is why it
+The Pack-and-Go has to come from the examination itself, which is why it
 is a required argument and never picked up from disk by itself.
 
     python tools/make_submission.py --pack-and-go D:/exam/INA700_station.rspag

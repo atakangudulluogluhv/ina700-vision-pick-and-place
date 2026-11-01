@@ -74,7 +74,7 @@ class CaptureWorker(StoppableWorker):
 class InferenceWorker(QueueWorker):
     """Runs the trained model on each frame and measures how long it takes.
 
-    Printing the inference time is its own assignment requirement (T5); it is
+    Printing the inference time is its own assignment requirement; it is
     printed here, where it is measured, and also shown on the HMI.
     """
 

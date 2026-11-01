@@ -124,7 +124,7 @@ def build_segmenter(config: Config) -> Segmenter:
 def build_detector(args: argparse.Namespace, config: Config) -> ShapeDetector:
     """Create the detector chosen on the command line.
 
-    YOLO is the detector of the submission (T14); the contour detector stays
+    YOLO is the detector of the submission; the contour detector stays
     as the lab fallback. Both honour ShapeDetector, so nothing downstream
     knows which one is running (Liskov). Either way the angle is replaced by
     the measured corner direction, because a box angle cannot orient a star.
@@ -374,7 +374,7 @@ class ShapeTriggerApp:
             inference_time_sec = time.perf_counter() - start_time_sec
 
             # Printing the measured inference time is its own requirement of
-            # the assignment, not just a debugging aid (trap T5).
+            # the assignment, not just a debugging aid.
             self._report_inference(detections, inference_time_sec)
 
             marker_pose = self._locate_marker(region)

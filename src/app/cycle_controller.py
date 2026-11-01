@@ -2,11 +2,11 @@
 
 Grade level III asks for three things this thread owns:
 
-  * the operator chooses which object is picked, every time (T4),
+  * the operator chooses which object is picked, every time,
   * the program keeps cycling without a restart,
   * a failed pick may be retried up to two times.
 
-There is no vacuum sensor on the gripper (A18), so the robot cannot tell a
+There is no vacuum sensor on the gripper, so the robot cannot tell a
 failed pick from a good one. The camera can: after the robot reports the
 plate placed, a frame taken *afterwards* must no longer show a plate of that
 shape at the picked spot. If it still does, the pick failed and is retried.

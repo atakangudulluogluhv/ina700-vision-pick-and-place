@@ -1,4 +1,4 @@
-"""Colour classification of a detected object (assignment requirement T10).
+"""Colour classification of a detected object (assignment requirement).
 
 The median hue inside the object mask is used rather than the mean: a few
 specular highlights on the glossy 3D printed surface would drag a mean towards
@@ -74,8 +74,8 @@ class ColorClassifier:
     def is_white(self, frame_bgr: np.ndarray, mask: np.ndarray, paper_value: float) -> bool:
         """True for an unsaturated region about as bright as the paper.
 
-        White is the one colour that is never picked (user directive,
-        2026-09-18): any other colour, black and grey included, is a plate.
+        White is the one colour that is never picked:
+        any other colour, black and grey included, is a plate.
         """
         return self._achromatic_name(frame_bgr, mask, paper_value) == self._white_name
 
@@ -123,7 +123,7 @@ class ColorClassifier:
 
         # The region as a whole has to be colourful, not merely contain a few
         # colourful pixels: the printed ArUco marker is grey (median saturation
-        # ~12 on the 2026-09-17 captures, against ~142-255 for the plates) but
+        # ~12 on the lab captures, against ~142-255 for the plates) but
         # noise along its border would pass a per-pixel test and let the marker
         # compete as a pick target.
         if np.median(saturation[inside]) < self._min_saturation:

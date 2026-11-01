@@ -7,34 +7,31 @@ MODULE MainModule
     ! calibration and angle logic stays on the Pi.
     !
     ! Connection, retry and timeout come from ServerCommuncatio.sys, which
-    ! must stay untouched (T18). The robot is the client (T8). Strict
+    ! must stay untouched. The robot is the client. Strict
     ! lockstep, the server speaks first, no line terminator:
     !
     !   Pi -> robot : PICK;<id>;<shape>;<color>;<x_mm>;<y_mm>;<z_mm>;<rz_deg>
     !   robot -> Pi : ACK;<id>;OK     plate placed
     !                 ACK;<id>;FAIL   message rejected, nothing moved
     !
-    ! Every message stays under RAPID's 80-character string limit (T16).
+    ! Every message stays under RAPID's 80-character string limit.
     ! x/y/z are in wobj2 (paper); rz_deg is the plate's turn relative to its
     ! fixture cavity, measured counter-clockwise seen from above.
 
     ! ---------------------------------------------------------------------
     ! Tool and work objects
     ! ---------------------------------------------------------------------
-    ! Names match what was actually taught on this robot's pendant
-    ! (2026-09-28), which is the opposite pairing from the original plan:
     ! wobj1 = the place fixture (mould), wobj2 = the picking paper. Values
     ! below are copied from the pendant, not re-derived.
     TASK PERS tooldata tool1:=[TRUE,[[93.6592,-36.0826,202.462],[1,0,0,0]],[1.1,[0,20,25],[1,0,0,0],0,0,0]];
 
-    ! Place fixture (the black mould), defined from its own three corners
-    ! (docs/ROBOT_SETUP.md, step 2B, point 2 -- done). Every place point
-    ! below is stored relative to wobj1, so if the fixture moves or turns,
-    ! only wobj1 needs to be redefined.
+    ! Place fixture (the black mould), defined from its own three corners.
+    ! Every place point below is stored relative to wobj1, so if the fixture
+    ! moves or turns, only wobj1 needs to be redefined.
     ! It was taught with tool0 active, and the place points were taught in
     ! that frame. Redefining it with tool1 drops the frame ~209 mm and shifts
-    ! it sideways, which drove the tool into the mould (2026-11-01). If it
-    ! must be redefined: tool0, the same three corners, Linear jog only.
+    ! it sideways, which drives the tool into the mould. If it must be
+    ! redefined: tool0, the same three corners, Linear jog only.
     TASK PERS wobjdata wobj1:=[FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[712.991,154.924,599.812],[0.999976,0.00178742,-0.00671454,2.01148E-05]]];
 
     ! Picking paper, taught with tool1 active on the paper's own corners
@@ -42,18 +39,14 @@ MODULE MainModule
     ! ArUco marker, so the Pi adds the marker centre's position in this frame
     ! (coordinate.marker_offset_*_mm): jog tool1 onto the marker centre with
     ! wobj2 selected and enter the pendant's X/Y in the HMI CALIBRATION tab.
-    ! 2026-11-01: paper turned to landscape and wobj2 taught again; the marker
-    ! centre read (182.37, 157.86). The ~1.2 deg tilt matches the mould
-    ! frame's tilt, so the table itself is probably not quite level.
-    ! Value saved from the controller; re-read it on the pendant at the exam.
+    ! The ~1.2 deg tilt matches the mould frame's tilt, so the table itself
+    ! is probably not quite level.
     TASK PERS wobjdata wobj2:=[FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[710.749,-190.346,380.321],[0.999945,-0.00100401,-0.0104361,0.000635222]]];
 
     ! ---------------------------------------------------------------------
     ! Place points in wobj1 (mould), one pair per cavity: approach point
-    ! above, grip point in the cavity. Re-taught for real (2026-09-28,
-    ! docs/ROBOT_SETUP.md step 2B, point 3) after wobj1 was redefined from
-    ! the mould's own corners -- these values came from the robot itself
-    ! (robot/robot_code_final.mod), not computed here.
+    ! above, grip point in the cavity. Taught on the robot with Linear jog
+    ! only, so their orientation matches pPickTemplate below.
     ! ---------------------------------------------------------------------
     CONST robtarget p20:=[[-64.48,133.05,-136.27],[0.00299319,0.124051,0.992254,0.00579034],[0,0,4,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
     CONST robtarget p30:=[[-65.23,132.86,-192.01],[0.00298973,0.124054,0.992254,0.00580273],[0,0,4,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
@@ -65,9 +58,8 @@ MODULE MainModule
     ! Pick orientation template: only its orientation and configuration are
     ! used; the position is overwritten from each message. It must equal the
     ! place points' orientation, otherwise the wrist turns between pick and
-    ! place and every plate lands rotated by the difference. 2026-10-07: the
-    ! old template (from the first lab's p30) was 13.6 deg off the re-taught
-    ! p30/p50/p70, so it is now copied from p30.
+    ! place and every plate lands rotated by the difference; it is therefore
+    ! copied from p30.
     CONST robtarget pPickTemplate:=[[0,0,0],[0.00298973,0.124054,0.992254,0.00580273],[0,0,4,0],[9E+09,9E+09,9E+09,9E+09,9E+09,9E+09]];
 
     ! ---------------------------------------------------------------------
@@ -78,7 +70,7 @@ MODULE MainModule
     ! Extra height for both transfers (paper <-> mould). A MoveJ swings the
     ! TCP along an arc that depends on the start pose, and the approach
     ! points sit only 42-69 mm above the mould; both transfers are therefore
-    ! straight MoveL moves this much higher (lab 2026-11-01).
+    ! straight MoveL moves this much higher.
     CONST num TRANSFER_CLEARANCE_MM := 100;
     ! Lets the vacuum build up before lifting and fall away before leaving.
     CONST num VACUUM_SETTLE_SEC := 0.5;
@@ -88,8 +80,8 @@ MODULE MainModule
     CONST num PICK_Z_MIN_MM := -10;
     CONST num PICK_Z_MAX_MM := 100;
     ! The tool's Z axis points down, so a turn about it runs opposite to a
-    ! counter-clockwise turn seen from above. Flip to 1 if the lab test shows
-    ! the wrist turning the wrong way (docs/ROBOT_SETUP.md, step 4).
+    ! counter-clockwise turn seen from above. Flip to 1 if a test shows the
+    ! wrist turning the wrong way (docs/ROBOT_SETUP.md, step 4).
     CONST num TOOL_RZ_SIGN := -1;
     ! Supervised runs: wait for the yellow button before each descent. The
     ! Pi waits comm.ack_timeout_sec for the ACK, which covers this wait.
@@ -203,7 +195,7 @@ MODULE MainModule
         RETURN TRUE;
     ENDFUNC
 
-    ! Fixed place cavity per assigned shape (A1: circle, hexagon, star).
+    ! Fixed place cavity per assigned shape (circle, hexagon, star).
     FUNC bool PlaceFor(string shape, INOUT robtarget approach, INOUT robtarget grip)
         IF shape = "circle" THEN
             approach := p20;

@@ -68,7 +68,7 @@ class BaslerCamera(CameraSource):
 
     @property
     def device_model_name(self) -> str:
-        """Model name of the attached camera, logged to close open point A14."""
+        """Model name of the attached camera, logged at start-up."""
         return self._device_model_name
 
     def describe_device(self) -> str:

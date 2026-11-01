@@ -1,11 +1,11 @@
-"""Train the YOLO26-OBB shape detector and export it for the Pi (Stage B).
+"""Train the YOLO26-OBB shape detector and export it for the Pi.
 
 Runs on the PC only: the Pi has no torch and only loads the exported ONNX
 file. Every hyper-parameter comes from the `training` section of
-config/settings.yaml, so a retrain in the lab never needs a code edit (T11).
+config/settings.yaml, so a retrain in the lab never needs a code edit.
 
 The dataset is the one written by tools/auto_label.py and contains only the
-three assigned shapes, so the trained model cannot see the other two (T1).
+three assigned shapes, so the trained model cannot see the other two.
 
 Usage:
     python tools/train_yolo.py                 # train, then export
@@ -61,7 +61,7 @@ def train(settings: Config) -> Path:
         exist_ok=True,
         # Validate (and therefore early-stop) on the NMS-free one-to-one head
         # that is exported to the Pi. The default validates the one-to-many
-        # head through NMS instead: measured 2026-09-18, that reported recall
+        # head through NMS instead: measured on this dataset, that reported recall
         # 1.00 while the shipped head only reached 0.95.
         nms=False,
         **augmentation_arguments(settings.section("augment")),

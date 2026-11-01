@@ -6,7 +6,7 @@ Two strategies sit behind the same interface (open/closed):
   ratio, valid only while the camera looks exactly straight down.
 * HomographyCalibration -- maps the image onto the marker plane with the
   perspective transform defined by the marker's four corners. It also holds
-  when the camera is slightly tilted: in the lab (2026-10-07) the marker's
+  when the camera is slightly tilted: in the lab the marker's
   sides differed by 1.1 % in the image, which the ratio method turned into
   0.5-5 mm errors that changed direction across the paper.
 

@@ -65,7 +65,7 @@ class WorldPose:
 
         OrientationNormalizer picks the turn within the wrist limit, e.g.
         -23.8 deg; wrapping that to 336.2 would describe the same pose but
-        tell the robot to go the long way round (found 2026-09-18).
+        tell the robot to go the long way round.
         """
         if not np.isfinite(value):
             raise ValueError(f"rz_deg must be finite, got {value}")

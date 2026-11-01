@@ -446,7 +446,7 @@ def test_shape_only_template_matches_rapid_expectation():
 
 
 def test_full_template_stays_within_the_rapid_string_limit():
-    """Trap T16: RAPID truncates strings longer than 80 characters."""
+    """RAPID truncates strings longer than 80 characters."""
     formatter = MessageFormatter("PICK;{id};{shape};{color};{x_mm};{y_mm};{z_mm};{rz_deg}")
     message = formatter.format(99, "triangle", "green", 1234.5, -678.9, 12.0, 359.9)
     assert len(message) <= 80, "message is " + str(len(message)) + " characters"
@@ -511,7 +511,7 @@ def _run_all_tests() -> int:
 
 
 # --------------------------------------------------------------------------
-# Corner-direction orientation (risk B6)
+# Corner-direction orientation
 # --------------------------------------------------------------------------
 
 ORIENTATION_TOLERANCE_DEG = 2.0
@@ -593,7 +593,7 @@ def test_refining_detector_replaces_box_angle_with_corner_direction():
 
 
 def test_refining_detector_moves_star_pick_point_to_its_true_centre():
-    """A tip-up star's box is centred ~0.1 radius above the star (lab 2026-09-30)."""
+    """A tip-up star's box is centred ~0.1 radius above the star."""
     frame = rotated_canvas(star_points(), 0.0)
     box_center_y_px = CANVAS_CENTER_PX - 0.096 * SHAPE_RADIUS_PX
     box = Detection("star", "blue", CANVAS_CENTER_PX, box_center_y_px, 0.0,
@@ -636,13 +636,13 @@ def test_robot_refuses_what_it_cannot_do_safely():
 
 
 def test_longest_realistic_pick_message_fits_rapid_string():
-    """T16 with the configured template and the widest values it can carry."""
+    """RAPID string limit with the configured template and the widest values it can carry."""
     message = configured_formatter().format(9999, "hexagon", "unknown", -9999.9, -9999.9, -999.9, -179.9)
     assert len(message) <= 80, len(message)
 
 
 # --------------------------------------------------------------------------
-# "Every colour except white" (user directive, 2026-09-18)
+# "Every colour except white"
 # --------------------------------------------------------------------------
 
 PAPER_GREY_LEVEL = 200  # a lit sheet of paper, not a saturated 255

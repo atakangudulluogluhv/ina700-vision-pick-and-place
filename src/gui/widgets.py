@@ -408,7 +408,7 @@ class CyclePanel:
 
 
 class KpiPanel:
-    """Inference time against the 3 s limit (T5), as number and as bar."""
+    """Inference time against the 3 s limit, as number and as bar."""
 
     BAR_HEIGHT_PX = 14
 

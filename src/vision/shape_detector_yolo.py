@@ -14,7 +14,7 @@ in the pixel space of the square letterboxed network input. The only
 post-processing left is undoing that letterbox.
 
 The model was trained on the three assigned shapes only, so it cannot report
-the other two (T1).
+the other two.
 """
 
 import math
@@ -128,7 +128,7 @@ class YoloObbDetector(ShapeDetector):
 
         The one-to-one head is meant to need no NMS, but on this small dataset
         it still emits a weak second box on a plate now and then (measured
-        2026-09-18: a 0.57 star 4 px from a 0.85 one). Sending both would make
+        on the lab captures: a 0.57 star 4 px from a 0.85 one). Sending both would make
         the robot pick the same plate twice.
         """
         kept: list[np.ndarray] = []
@@ -178,7 +178,7 @@ class YoloObbDetector(ShapeDetector):
     def _read_color(self, frame, center_px, size_px, angle_deg):
         """Colour name of the box centre, or None when the plate is white.
 
-        White is the one colour never picked (user directive, 2026-09-18);
+        White is the one colour never picked;
         black and grey plates are kept. Whiteness is judged against the paper
         right around the box. Only small patches are converted, never the
         whole 5 MP frame.

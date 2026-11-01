@@ -1,6 +1,6 @@
 """Shape orientation measured from the plate outline inside a detected box.
 
-Why this exists (risk B6, measured 2026-09-18): the angle of an oriented
+Why this exists (measured on the lab captures): the angle of an oriented
 bounding box is only defined up to the box's own symmetry, not the shape's.
 A five-pointed star's box is almost square (aspect 0.95), so when width and
 height swap the box angle jumps by 90 deg, which is 18 deg off modulo the
@@ -8,14 +8,14 @@ star's 72 deg period -- no amount of training fixes that. For the hexagon the
 box sits a constant 30 deg away from the corners and the model's box angle
 carries ~7 deg of noise on top.
 
-The trained model still decides *what* and *where* every plate is (T14). This
+The trained model still decides *what* and *where* every plate is. This
 step only looks inside the model's box and measures *which way* the plate's
 corners point, so every shape reports the same thing: the direction of one of
 its corners (hexagon) or tips (star), in image degrees, clockwise because the
 image y axis points down. OrientationNormalizer then folds that angle by the
 shape's symmetry period.
 
-The same outline also gives the pick point (measured 2026-09-30 in the lab):
+The same outline also gives the pick point (measured in the lab):
 a five-pointed star is not symmetric inside its box -- one tip reaches the
 top edge, two tips stop short of the bottom -- so the box centre sits ~0.1 of
 the star radius towards a tip. The robot picked stars a few mm off while
