@@ -18,3 +18,6 @@ robot/reference_lab_MainModule.mod
 robot/ServerCommuncatio.sys
 docs/figures/fig*_*.jpg
 docs/figures/crop_*.png
+
+# Station run logs written by tools/start_station.sh
+logs/

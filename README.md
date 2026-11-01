@@ -99,6 +99,8 @@ picking, placing and retry. Remaining work:
 On the Pi:
 
 ```bash
+tools/start_station.sh                              # checks camera/network, then the station
+tools/start_station.sh --install-desktop            # double-click launcher on ~/Desktop
 python -m src.app.station --fullscreen              # HMI + full pick cycle
 python -m src.app.main --camera basler --no-robot   # camera and calibration only
 python -m src.app.main --detector contour           # classical-CV fallback detector
@@ -124,6 +126,7 @@ The tests (pytest, no camera or robot needed) also run on every push through Git
 | `tools/aruco_probe.py` | Diagnose marker detection (dictionary, print quality, exposure) |
 | `tools/fake_robot_client.py` | Python version of `robot/MainModule.mod` for socket tests |
 | `tools/setup_pi.sh` | Pi setup: Python packages and the static IP on the robot subnet |
+| `tools/start_station.sh` | One-click lab start: USB 3.0 camera, server address, old process, robot ping, then the HMI |
 | `tools/make_submission.py` | Build and verify the hand-in ZIP (program, model, Pack-and-Go) |
 
 ## Setup
