@@ -44,11 +44,17 @@ validation sets with a fixed seed.
 | Val objects found | 70 of 74, no wrong classes |
 | Centre error (median) | 2.9 px, about 0.5 mm |
 
-**Calibration.** One 100 mm ArUco marker sits on the paper and defines the
-origin and axes of the robot's pick work object (`wobj2`). It is located in
-every frame, so a bumped camera or a shifted sheet doesn't silently corrupt
-the coordinates. The marker gives the mm-per-pixel ratio and the local axes
-(`src/transform/coordinate_mapper.py`).
+**Calibration.** One 100 mm ArUco marker sits on the paper and is located in
+every frame, so a bumped camera doesn't silently corrupt the coordinates.
+The camera is not exactly perpendicular to the table (the marker's sides
+differ by about 1 % in the image), so pixels are mapped with a perspective
+transform from the marker's four corners rather than a single mm-per-pixel
+ratio; the ratio method taught in the course stays available as a second
+strategy behind the same interface (`src/transform/coordinate_mapper.py`).
+The robot's pick work object (`wobj2`) is taught on the paper's corners, and
+the marker centre's position in it is touched once with the robot and
+entered in the HMI's **CALIBRATION** tab, which applies it live and writes it
+back to `config/settings.yaml`. The same tab measures each cavity's angle.
 
 **Orientation.** Sending the raw angle would make the wrist turn more than it
 needs to. The angle is folded by each shape's symmetry (hexagon 60°, star
@@ -80,16 +86,25 @@ halved that, with no real loss in accuracy on the validation set:
 | 512 | 880 ms  | 65 / 74 | 2.8 px |
 | 416 | 610 ms  | 72 / 74 | 3.3 px |
 
-On the lab's Pi 4 with the 416 model the HMI shows 225–268 ms per frame.
+On the lab's Pi 4 with the 416 model, during a full run with the HMI open,
+inference took 354–1041 ms per frame, median 461 ms (1537 frames,
+2026-11-01). The time is printed for every frame and shown in the HMI.
 (The screenshot above is from an earlier run on a Pi 3.)
 
 ## Status
 
-The full loop runs on the real robot: live detection, operator selection,
-picking, placing and retry. Remaining work:
+The full loop runs on the real robot: live detection, operator selection by
+shape and colour, picking, placing and retry. In the last lab run
+(2026-11-01) six plates were placed over two cycles, all three shapes,
+with no failed pick.
 
-- Picks are still a few mm off-centre; the last `wobj2` offset correction
-  has not been verified on the robot yet.
+Known limitations:
+
+- Now and then a plate is picked a few mm off-centre. Detection is stable
+  (repeated messages for the same plate differ by under 1 mm), so the error
+  comes from the pixel-to-robot mapping; candidates are a small rotation
+  between the marker and `wobj2`, the sheet shifting during a run, and the
+  slightly tilted table. The retry covers a failed pick.
 - An unassigned triangle was once detected as a hexagon with confidence 0.53,
   just above the 0.5 threshold. The fix is to retrain with the distractor
   shapes as negatives.
@@ -150,7 +165,7 @@ All tunable values (thresholds, offsets, network settings) are in
 
 | | |
 |---|---|
-| Camera | Basler ace 2 `a2A2448-75ucBAS`, 2448×2048 |
+| Camera | Basler ace 2 `a2A2448-75ucBAS`, 2448×2048, USB 3.0 |
 | Robot | ABB IRB 1600-6/1.2, IRC5 controller |
 | Network | Pi `192.168.125.2:5000` (server), robot as client |
 
@@ -165,7 +180,7 @@ src/
   core/      config loading, interfaces, worker base classes
   app/       station.py (entry point), main.py (CLI), workers, cycle controller
   vision/    cameras, YOLO and contour detectors, ArUco, colour, orientation refiner
-  transform/ pixel → robot mm, symmetry-aware orientation
+  transform/ pixel → robot mm (homography or ratio), symmetry-aware orientation
   comm/      TCP server for the robot
   gui/       Tk operator HMI (ISA-101 style)
 robot/       RAPID: MainModule.mod
