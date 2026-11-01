@@ -20,6 +20,7 @@ back to this machine first, or pass --source with the folder holding them.
 import argparse
 import hashlib
 import re
+import subprocess
 import sys
 import zipfile
 from datetime import datetime
@@ -38,6 +39,8 @@ PACK_AND_GO_FOLDER = "pack_and_go"
 MANIFEST_NAME = "MANIFEST.txt"
 SETTINGS_RELATIVE_PATH = "config/settings.yaml"
 MD5_READ_CHUNK_BYTES = 1 << 20
+# git check-ignore exits 0 when something matched and 1 when nothing did.
+GIT_CHECK_IGNORE_OK_CODES = (0, 1)
 
 # The grader runs the Pi program and loads the RAPID side; both need these.
 INCLUDED_FILES = ("README.md", "requirements-pi.txt")
@@ -46,10 +49,10 @@ INCLUDED_FOLDERS = ("config", "src", "tools", "tests", "models", "docs")
 # Anything else under robot/ is course reference material, not our program.
 ROBOT_FILES = ("robot/MainModule.mod", "robot/ServerCommuncatio.sys")
 
-# Assistant notes, the personal exam-day card and crops of the assignment PDF
-# are not program files.
-EXCLUDED_NAMES = {"__pycache__", ".pytest_cache", "pi_CLAUDE.md", "CLAUDE.md"}
-EXCLUDED_PATTERNS = ("docs/SINAV_GUNU.md", "docs/figures/fig*_*.jpg", "docs/figures/crop_*.png")
+# Whatever git ignores (caches, personal notes, crops of the assignment PDF) is
+# not a program file. The robot files above are the deliberate exception: the
+# course socket layer is ignored so it is never published, yet it must ship.
+EXCLUDED_NAMES = {"__pycache__", ".pytest_cache"}
 
 # Without these the archive cannot be graded at all; checked inside the ZIP.
 REQUIRED_MEMBERS = (
@@ -70,20 +73,35 @@ def md5_of(path: Path) -> str:
     return digest.hexdigest()
 
 
-def is_excluded(relative_path: Path) -> bool:
-    if any(part in EXCLUDED_NAMES for part in relative_path.parts):
-        return True
-    return any(relative_path.match(pattern) for pattern in EXCLUDED_PATTERNS)
+def git_ignored(relative_paths: list[Path]) -> set[Path]:
+    """Paths this repository's ignore rules match, judged by path alone.
+
+    Asked of PROJECT_ROOT rather than --source, so a plain copy pulled back
+    from the Pi (no .git of its own) is filtered by the same rules. NUL
+    separators in bytes, because text mode on Windows would append a CR to
+    every path and git would match none of them.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(PROJECT_ROOT), "check-ignore", "--no-index", "--stdin", "-z"],
+        input=b"\0".join(path.as_posix().encode("utf-8") for path in relative_paths),
+        capture_output=True, check=False,
+    )
+    if result.returncode not in GIT_CHECK_IGNORE_OK_CODES:
+        raise RuntimeError(f"git check-ignore failed: {result.stderr.decode(errors='replace').strip()}")
+    return {Path(name.decode("utf-8")) for name in result.stdout.split(b"\0") if name}
 
 
 def collect_program_files(source_root: Path) -> list[Path]:
     """Relative paths of every program file to ship, sorted for a stable ZIP."""
-    relative_paths = [Path(name) for name in INCLUDED_FILES + ROBOT_FILES]
+    candidates = []
     for folder in INCLUDED_FOLDERS:
         for path in (source_root / folder).rglob("*"):
-            if path.is_file() and path.suffix != ".pyc":
-                relative_paths.append(path.relative_to(source_root))
-    kept = [path for path in relative_paths if not is_excluded(path)]
+            relative_path = path.relative_to(source_root)
+            if path.is_file() and not EXCLUDED_NAMES.intersection(relative_path.parts):
+                candidates.append(relative_path)
+    ignored = git_ignored(candidates)
+    kept = [Path(name) for name in INCLUDED_FILES + ROBOT_FILES]
+    kept += [path for path in candidates if path not in ignored]
     missing = [str(path) for path in kept if not (source_root / path).is_file()]
     if missing:
         raise FileNotFoundError(f"program files missing under {source_root}: {missing}")

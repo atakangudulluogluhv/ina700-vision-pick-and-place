@@ -454,7 +454,7 @@ def test_full_template_stays_within_the_rapid_string_limit():
 
 def test_server_rejects_messages_rapid_cannot_carry():
     server = RobotServer(LOOPBACK_HOST, LOOPBACK_PORT, 1.0, 1.0, max_message_length=80)
-    for bad_message in ("X" * 81, "KÖŞE"):
+    for bad_message in ("X" * 81, "CAFÉ"):
         try:
             server._validate_message(bad_message)
         except MessageTooLongError:

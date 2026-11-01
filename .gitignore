@@ -10,13 +10,10 @@ __pycache__/
 .pytest_cache/
 .venv/
 
-# Working notes and course material (kept locally, not published)
-CLAUDE.md
-tools/pi_CLAUDE.md
+# Course material (kept locally, not published)
 *.pdf
 !docs/figures/*.pdf
 reference/
-docs/SINAV_GUNU.md
 robot/reference_lab_MainModule.mod
 robot/ServerCommuncatio.sys
 docs/figures/fig*_*.jpg
