@@ -9,7 +9,7 @@
 > yellow button = **`diOkButton`**.
 >
 > **Current method (2026-10-19):** `wobj2` is taught on the paper's corners and stays fixed; the Pi adds
-> `coordinate.marker_offset_x/y_mm` (the marker centre touched in `wobj2`, now **215.57 / 156.24**) to
+> `coordinate.marker_offset_x/y_mm` (the marker centre touched in `wobj2`, now **182.37 / 157.86**) to
 > every position. The `oframe.trans` shifting in step 5B below is the older route and no longer used.
 > Axis directions (step 4) are still valid: `invert_x: true`, `invert_y: false`, `swap_xy: false`.
 

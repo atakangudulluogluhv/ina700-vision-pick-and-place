@@ -14,6 +14,7 @@ coordinate.method in settings.yaml picks one (src/app/main.py).
 """
 
 import math
+import threading
 from abc import ABC, abstractmethod
 
 import cv2
@@ -58,6 +59,23 @@ class MarkerFrameCalibration(CoordinateMapper):
         # not on the marker (e.g. taught on the paper's corners).
         self._marker_offset_x_mm = float(coordinate.get("marker_offset_x_mm", 0.0))
         self._marker_offset_y_mm = float(coordinate.get("marker_offset_y_mm", 0.0))
+        # The operator screen may re-touch the marker while the transform
+        # thread is converting a frame; both values must change together.
+        self._offset_lock = threading.Lock()
+
+    @property
+    def marker_offset_mm(self) -> tuple:
+        """(x_mm, y_mm) of the marker centre in wobj2."""
+        with self._offset_lock:
+            return self._marker_offset_x_mm, self._marker_offset_y_mm
+
+    def set_marker_offset_mm(self, offset_x_mm: float, offset_y_mm: float) -> None:
+        """Replace the marker position, e.g. after the paper has moved."""
+        offset_x_mm, offset_y_mm = float(offset_x_mm), float(offset_y_mm)
+        if not (math.isfinite(offset_x_mm) and math.isfinite(offset_y_mm)):
+            raise ValueError("marker offset must be a finite number of mm")
+        with self._offset_lock:
+            self._marker_offset_x_mm, self._marker_offset_y_mm = offset_x_mm, offset_y_mm
 
     @abstractmethod
     def _to_marker_mm(self, pixel_x_px: float, pixel_y_px: float, marker_pose: MarkerPose):
@@ -71,8 +89,8 @@ class MarkerFrameCalibration(CoordinateMapper):
             x_mm = -x_mm
         if self._invert_y:
             y_mm = -y_mm
-        return WorldPose(x_mm=x_mm + self._marker_offset_x_mm, y_mm=y_mm + self._marker_offset_y_mm,
-                         z_mm=0.0, rz_deg=0.0)
+        offset_x_mm, offset_y_mm = self.marker_offset_mm
+        return WorldPose(x_mm=x_mm + offset_x_mm, y_mm=y_mm + offset_y_mm, z_mm=0.0, rz_deg=0.0)
 
     def direction_to_world_deg(self, center_x_px: float, center_y_px: float,
                                 pixel_angle_deg: float, marker_pose: MarkerPose) -> float:
@@ -94,7 +112,7 @@ class MarkerFrameCalibration(CoordinateMapper):
     def _flags_text(self) -> str:
         return ("invert_x=" + str(self._invert_x) + ", invert_y=" + str(self._invert_y)
                 + ", swap_xy=" + str(self._swap_xy) + ", marker_offset_mm=("
-                + str(self._marker_offset_x_mm) + ", " + str(self._marker_offset_y_mm) + "))")
+                + ", ".join(str(value) for value in self.marker_offset_mm) + "))")
 
 
 class RatioCalibration(MarkerFrameCalibration):

@@ -8,6 +8,8 @@ a shape name, which keeps it trivially testable and reusable once the AI
 detector replaces ContourShapeDetector.
 """
 
+import threading
+
 from src.core.config import Config
 
 FULL_TURN_DEG = 360.0
@@ -31,6 +33,23 @@ class OrientationNormalizer:
             name: float(offset_deg)
             for name, offset_deg in config.get("orientation.place_offset_deg").items()
         }
+        # The operator screen may re-measure a cavity while the transform
+        # thread is normalising a frame.
+        self._offset_lock = threading.Lock()
+
+    def symmetry_period_deg(self, shape_name: str) -> float:
+        return self._symmetry_period_deg.get(shape_name, FULL_TURN_DEG)
+
+    def place_offset_deg(self, shape_name: str) -> float:
+        with self._offset_lock:
+            return self._place_offset_deg.get(shape_name, NO_ROTATION_DEG)
+
+    def set_place_offset_deg(self, shape_name: str, offset_deg: float) -> None:
+        """Replace one cavity heading, e.g. after re-seating a plate by hand."""
+        if shape_name not in self._symmetry_period_deg:
+            raise ValueError(f"unknown shape: {shape_name}")
+        with self._offset_lock:
+            self._place_offset_deg[shape_name] = float(offset_deg)
 
     def normalize(self, world_angle_deg: float, shape_name: str) -> float:
         """Return the smallest wrist turn, within limits, that lines the plate
@@ -39,7 +58,7 @@ class OrientationNormalizer:
         if period_deg <= 0.0:
             return NO_ROTATION_DEG
 
-        turn_deg = world_angle_deg - self._place_offset_deg.get(shape_name, NO_ROTATION_DEG)
+        turn_deg = world_angle_deg - self.place_offset_deg(shape_name)
         folded_deg = turn_deg % period_deg
         return self._nearest_candidate_within_limit(folded_deg, period_deg)
 

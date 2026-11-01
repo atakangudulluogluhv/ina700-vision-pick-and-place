@@ -31,28 +31,22 @@ MODULE MainModule
     ! (docs/ROBOT_SETUP.md, step 2B, point 2 -- done). Every place point
     ! below is stored relative to wobj1, so if the fixture moves or turns,
     ! only wobj1 needs to be redefined.
+    ! It was taught with tool0 active, and the place points were taught in
+    ! that frame. Redefining it with tool1 drops the frame ~209 mm and shifts
+    ! it sideways, which drove the tool into the mould (2026-11-01). If it
+    ! must be redefined: tool0, the same three corners, Linear jog only.
     TASK PERS wobjdata wobj1:=[FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[712.991,154.924,599.812],[0.999976,0.00178742,-0.00671454,2.01148E-05]]];
 
-    ! Picking paper. Origin moved onto the ArUco marker centre (2026-09-28,
-    ! docs/OFFSET_CALIBRATION.md step 5B): jogged tool1 onto the marker with
-    ! wobj2 selected, read Position (118.56, 145.82), added that onto the
-    ! previous oframe.trans.x/.y (714.881, -144.99); marker-touch check
-    ! (step 5B.6) then read ~0,0. Two live-pick corrections were folded in
-    ! afterwards (measured on the plate, converted through invert_x=true/
-    ! invert_y=false into world coords): first pass +15mm/+3mm local ->
-    ! -15/+3 world; second pass Y was fine, X still off by an estimated
-    ! +3..5mm local (used 4mm) -> -4 world. Still not verified against a
-    ! new pick.
-    ! 2026-10-07: redefined from the marker itself instead. Touched with tool1
-    ! in wobj0/World: marker corner P1 (781.9, -41.51, 389.9), along the edge
-    ! opposite the red axis P2 (1045.37, -41.51, 389.77), along the blue axis
-    ! P3 (786.02, 143.62, 392.15). Origin = P1 + 50 mm on both edges (marker
-    ! centre), on the paper surface; frame kept level, yaw 0 (the X edge was
-    ! confirmed on the drawn line, the Y edge read -1.3 deg but disagreed).
-    ! 2026-10-07 (late): taught again on the paper's own corners (top-left
-    ! origin, top-right, bottom-left). The marker centre then reads
-    ! (206.79, 153.91) in this frame -> coordinate.marker_offset_*_mm on the Pi.
-    TASK PERS wobjdata wobj2:=[FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[626.676,-153.111,385],[1,0,0,0]]];
+    ! Picking paper, taught with tool1 active on the paper's own corners
+    ! (origin, along X, along Y). The camera reports positions relative to the
+    ! ArUco marker, so the Pi adds the marker centre's position in this frame
+    ! (coordinate.marker_offset_*_mm): jog tool1 onto the marker centre with
+    ! wobj2 selected and enter the pendant's X/Y in the HMI CALIBRATION tab.
+    ! 2026-11-01: paper turned to landscape and wobj2 taught again; the marker
+    ! centre read (182.37, 157.86). The ~1.2 deg tilt matches the mould
+    ! frame's tilt, so the table itself is probably not quite level.
+    ! Value saved from the controller; re-read it on the pendant at the exam.
+    TASK PERS wobjdata wobj2:=[FALSE,TRUE,"",[[0,0,0],[1,0,0,0]],[[710.749,-190.346,380.321],[0.999945,-0.00100401,-0.0104361,0.000635222]]];
 
     ! ---------------------------------------------------------------------
     ! Place points in wobj1 (mould), one pair per cavity: approach point
@@ -81,6 +75,11 @@ MODULE MainModule
     ! ---------------------------------------------------------------------
     ! Height above the grip point where every descent and lift starts.
     CONST num APPROACH_HEIGHT_MM := 60;
+    ! Extra height for both transfers (paper <-> mould). A MoveJ swings the
+    ! TCP along an arc that depends on the start pose, and the approach
+    ! points sit only 42-69 mm above the mould; both transfers are therefore
+    ! straight MoveL moves this much higher (lab 2026-11-01).
+    CONST num TRANSFER_CLEARANCE_MM := 100;
     ! Lets the vacuum build up before lifting and fall away before leaving.
     CONST num VACUUM_SETTLE_SEC := 0.5;
     ! Safety envelope for a camera position in wobj2 (paper). A message outside
@@ -235,7 +234,8 @@ MODULE MainModule
         grip := RelTool(grip, 0, 0, 0 \Rz:=TOOL_RZ_SIGN * msgRz);
         above := Offs(grip, 0, 0, APPROACH_HEIGHT_MM);
 
-        MoveJ above, V_TRANSFER, fine, tool1 \WObj:=wobj2;
+        MoveL Offs(above, 0, 0, TRANSFER_CLEARANCE_MM), V_TRANSFER, z10, tool1 \WObj:=wobj2;
+        MoveL above, V_VERTICAL, fine, tool1 \WObj:=wobj2;
         IF USE_OK_BUTTON WaitOkButton;
         MoveL grip, V_VERTICAL, fine, tool1 \WObj:=wobj2;
         Set doValve2;
@@ -244,7 +244,8 @@ MODULE MainModule
     ENDPROC
 
     PROC Place(robtarget approach, robtarget grip)
-        MoveJ approach, V_TRANSFER, fine, tool1 \WObj:=wobj1;
+        MoveL Offs(approach, 0, 0, TRANSFER_CLEARANCE_MM), V_TRANSFER, z10, tool1 \WObj:=wobj1;
+        MoveL approach, V_VERTICAL, fine, tool1 \WObj:=wobj1;
         MoveL grip, V_VERTICAL, fine, tool1 \WObj:=wobj1;
         Reset doValve2;
         WaitTime VACUUM_SETTLE_SEC;

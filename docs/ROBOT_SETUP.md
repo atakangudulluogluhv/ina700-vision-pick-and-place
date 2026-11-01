@@ -22,11 +22,11 @@ Place points: circle `p20/p30`, star `p40/p50`, hexagon `p60/p70` (approach / gr
 |---|---|---|
 | 0 — Back up old module | ⏭️ skipped | The robot had no module loaded |
 | 1 — Load the module | ✅ | `robot/MainModule.mod` loaded. On 2026-10-19 the robot had reverted to an older module (wrong `wobj2` → error 50050 "outside reach") — **check at every start** |
-| 2 — `wobj2` on the paper | ✅ | Paper corners, `[[626.676, -153.111, 385],[1,0,0,0]]`; marker centre in it **(215.57, 156.24)** → Pi `coordinate.marker_offset_x/y_mm` |
+| 2 — `wobj2` on the paper | ✅ | Paper corners with tool1 (2026-11-01, landscape), `[[710.749, -190.346, 380.321],[0.999945, -0.00100401, -0.0104361, 0.000635222]]`; marker centre in it **(182.37, 157.86)** → Pi `coordinate.marker_offset_x/y_mm` |
 | 2B — `wobj1` on the mould + place points | ✅ | Mould corners taught, `p20…p70` re-taught |
 | 3 — Dry run | — | Not recorded; live picks were run directly |
 | 4 — `TOOL_RZ_SIGN` | ✅ | `-1` kept; turned plates seat correctly |
-| 5 — Cavity angles | ✅ | 2026-10-19: star **15.4**, hexagon **-1.7**, circle 0. `pPickTemplate` equals the place orientation |
+| 5 — Cavity angles | ✅ | 2026-11-01: star **20.6**, hexagon **-0.8**, circle 0. `pPickTemplate` equals the place orientation |
 | 6 — Real Z | ✅ | `pick_z_mm: 6.8`; `PICK_Z_MIN_MM := -10` |
 | 7 — Full run | ✅ | Picks centred (star too), placements correct |
 

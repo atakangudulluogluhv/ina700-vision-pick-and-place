@@ -18,13 +18,17 @@ sys.path.insert(0, str(PROJECT_ROOT))
 
 import numpy as np  # noqa: E402
 
+from src.app.calibration import MarkerOffsetCalibrator, PlaceOffsetCalibrator  # noqa: E402
 from src.app.cycle_controller import CycleController, CycleSettings  # noqa: E402
 from src.app.messages import (  # noqa: E402
     ANY_COLOR, CycleStatus, PickRequest, PickResult, Scene, SceneObject,
 )
 from src.app.scene_store import SceneStore  # noqa: E402
 from src.core.interfaces import Detection  # noqa: E402
+from src.core.config import Config  # noqa: E402
 from src.core.worker import put_latest  # noqa: E402
+from src.transform.coordinate_mapper import HomographyCalibration  # noqa: E402
+from src.transform.orientation import OrientationNormalizer  # noqa: E402
 from src.transform.world_pose import WorldPose  # noqa: E402
 
 SCENE_PERIOD_SEC = 0.02
@@ -158,6 +162,83 @@ def test_put_latest_keeps_only_the_newest_item():
     for item in (1, 2, 3):
         put_latest(latest_only, item)
     assert latest_only.get_nowait() == 3 and latest_only.empty()
+
+
+SETTINGS_SNIPPET = """coordinate:
+  # comment that must survive the save
+  marker_offset_x_mm: 215.57
+  marker_offset_y_mm: 156.24
+"""
+
+
+def make_calibrator(tmp_dir: Path) -> MarkerOffsetCalibrator:
+    settings_path = tmp_dir / "settings.yaml"
+    settings_path.write_text(SETTINGS_SNIPPET, encoding="utf-8")
+    config = Config({"coordinate": {"invert_x": True, "invert_y": False, "swap_xy": False,
+                                    "marker_offset_x_mm": 215.57, "marker_offset_y_mm": 156.24},
+                     "aruco": {"marker_length_mm": 100.0}})
+    return MarkerOffsetCalibrator(HomographyCalibration(config), settings_path, max_change_mm=30.0)
+
+
+def test_marker_offset_applies_live_and_saves_with_comments():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        calibrator = make_calibrator(Path(tmp))
+        calibrator.apply(217.10, 155.80)
+        assert calibrator.offset_mm == (217.10, 155.80) and calibrator.has_unsaved_change
+        calibrator.save()
+        text = (Path(tmp) / "settings.yaml").read_text(encoding="utf-8")
+        assert "marker_offset_x_mm: 217.10" in text and "marker_offset_y_mm: 155.80" in text
+        assert "comment that must survive" in text and not calibrator.has_unsaved_change
+
+
+def test_marker_offset_rejects_a_typo_sized_jump():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        calibrator = make_calibrator(Path(tmp))
+        for bad in ((2155.7, 156.24), (float("nan"), 156.24)):
+            try:
+                calibrator.apply(*bad)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(f"accepted {bad}")
+        assert calibrator.offset_mm == (215.57, 156.24)
+
+
+ANGLE_SETTINGS = """shapes:
+  star:
+    symmetry_period_deg: 72
+orientation:
+  place_offset_deg:
+    circle: 0.0
+    star: 15.4
+"""
+
+
+def test_place_angle_reading_is_added_and_saved_in_its_section():
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        settings_path = Path(tmp) / "settings.yaml"
+        settings_path.write_text(ANGLE_SETTINGS, encoding="utf-8")
+        config = Config({"shapes": {"star": {"symmetry_period_deg": 72}, "circle": {"symmetry_period_deg": 0}},
+                         "orientation": {"wrist_neutral_deg": 0.0, "wrist_limit_deg": 200.0,
+                                         "place_offset_deg": {"circle": 0.0, "star": 15.4}}})
+        normalizer = OrientationNormalizer(config)
+        calibrator = PlaceOffsetCalibrator(normalizer, settings_path)
+        assert calibrator.adjustable_shapes(["circle", "star"]) == ["star"]
+        assert abs(normalizer.normalize(15.4 + 3.0, "star") - 3.0) < 1e-6
+        calibrator.add_reading("star", 3.0)
+        assert abs(normalizer.normalize(15.4 + 3.0, "star")) < 1e-6 and calibrator.has_unsaved_change("star")
+        try:
+            calibrator.add_reading("star", 50.0)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted a reading beyond half a period")
+        calibrator.save("star")
+        text = settings_path.read_text(encoding="utf-8")
+        assert "    star: 18.40" in text and "  star:\n    symmetry_period_deg: 72" in text, text
 
 
 def _run_all_tests() -> int:

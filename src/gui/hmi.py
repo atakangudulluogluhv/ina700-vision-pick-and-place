@@ -15,6 +15,8 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Callable, Optional
 
+from src.app.calibration import MarkerOffsetCalibrator, PlaceOffsetCalibrator
+
 from src.app.messages import (
     CycleState, CycleStatus, LinkState, LinkStatus, LogEvent, OperatorCommand,
     PickRequest, Scene, Severity,
@@ -22,7 +24,7 @@ from src.app.messages import (
 from src.gui import theme
 from src.gui.widgets import (
     AlarmBanner, CameraView, CyclePanel, EventLog, HeaderBar, JobPanel, KpiPanel,
-    ObjectTable, panel,
+    MarkerCalibrationPanel, ObjectTable, PlaceAnglePanel, panel, scrollable,
 )
 
 RIGHT_COLUMN_WIDTH_PX = 430
@@ -35,6 +37,9 @@ MARKER_ALARM = "marker"
 CAMERA_ALARM = "camera"
 INFERENCE_ALARM = "inference"
 LINK_ALARMS = ("link", "bind")
+# Calibration may only change while no pick is in flight. FAULT counts:
+# the cycle has been aborted and the robot is not moving.
+IDLE_STATES = (CycleState.READY, CycleState.STOPPED, CycleState.FAULT)
 
 
 class HmiSettings:
@@ -56,8 +61,14 @@ class HmiWindow:
     """Builds the screen and keeps it in step with the pipeline."""
 
     def __init__(self, root: tk.Tk, settings: HmiSettings, shapes: list,
-                 ui_queue: queue.Queue, command_queue: queue.Queue, on_close: Callable) -> None:
+                 ui_queue: queue.Queue, command_queue: queue.Queue, on_close: Callable,
+                 calibrator: Optional[MarkerOffsetCalibrator] = None,
+                 angle_calibrator: Optional[PlaceOffsetCalibrator] = None) -> None:
         self._root = root
+        self._calibrator = calibrator
+        self._calibration: Optional[MarkerCalibrationPanel] = None
+        self._angle_calibrator = angle_calibrator
+        self._angles: Optional[PlaceAnglePanel] = None
         self._settings = settings
         self._ui_queue = ui_queue
         self._command_queue = command_queue
@@ -87,6 +98,9 @@ class HmiWindow:
                         foreground=theme.TEXT, font=self._fonts.normal, rowheight=22)
         style.configure("Treeview.Heading", font=self._fonts.bold, background=theme.PANEL_BORDER)
         style.map("Treeview", background=[("selected", theme.SELECTED)])
+        style.configure("TNotebook", background=theme.BACKGROUND, borderwidth=0)
+        style.configure("TNotebook.Tab", font=self._fonts.bold, padding=(theme.PAD_PX * 2, theme.PAD_PX // 2))
+        style.map("TNotebook.Tab", background=[("selected", theme.PANEL)])
 
     def _build(self, shapes: list) -> None:
         self._header = HeaderBar(self._root, self._settings.station_name, self._fonts)
@@ -127,14 +141,37 @@ class HmiWindow:
         self._log = EventLog(log_panel.body, self._settings.event_log_lines)
 
     def _build_right_column(self, right: tk.Frame, shapes: list) -> None:
-        job_panel = panel(right, "Job selection", self._fonts)
-        job_panel.pack(fill="x", pady=(0, theme.PAD_PX))
+        tabs = ttk.Notebook(right)
+        tabs.pack(fill="both", expand=True)
+        operation = tk.Frame(tabs, bg=theme.BACKGROUND)
+        tabs.add(operation, text="OPERATION")
+
+        job_panel = panel(operation, "Job selection", self._fonts)
+        job_panel.pack(fill="x", pady=(theme.PAD_PX // 2, theme.PAD_PX))
         self._job = JobPanel(job_panel.body, shapes, self._fonts, self._pick, self._cycle_stop,
                              self._reset, self._selection_changed)
 
-        cycle_panel = panel(right, "Cycle", self._fonts)
+        cycle_panel = panel(operation, "Cycle", self._fonts)
         cycle_panel.pack(fill="both", expand=True)
         self._cycle = CyclePanel(cycle_panel.body, self._fonts)
+
+        if self._calibrator is not None:
+            calibration_tab = tk.Frame(tabs, bg=theme.BACKGROUND)
+            tabs.add(calibration_tab, text="CALIBRATION")
+            # Scrolls when the window is made smaller than the two panels.
+            calibration = scrollable(calibration_tab)
+            marker_panel = panel(calibration, "Marker centre in wobj2", self._fonts)
+            marker_panel.pack(fill="x", pady=(theme.PAD_PX // 2, 0))
+            self._calibration = MarkerCalibrationPanel(marker_panel.body, self._fonts, self._calibrator.offset_mm,
+                                                       self._apply_marker_offset, self._save_marker_offset)
+            if self._angle_calibrator is not None:
+                angle_panel = panel(calibration, "Place angle (cavity rz)", self._fonts)
+                angle_panel.pack(fill="x", pady=(theme.PAD_PX, 0))
+                self._angles = PlaceAnglePanel(angle_panel.body, self._fonts,
+                                               self._angle_calibrator.adjustable_shapes(shapes),
+                                               self._add_place_reading, self._save_place_offset,
+                                               self._angle_shape_changed)
+                self._angle_shape_changed()
 
     # ------------------------------------------------------------------
     # Operator commands -> command_queue
@@ -152,6 +189,63 @@ class HmiWindow:
     def _reset(self) -> None:
         self._command_queue.put(OperatorCommand.RESET)
         self._banner.acknowledge_all()
+
+    def _apply_marker_offset(self, x_text: str, y_text: str) -> None:
+        if self._cycle_state not in IDLE_STATES:
+            self._log.add(LogEvent(Severity.WARNING, "Calib", "stop the cycle before changing the marker offset"))
+            return
+        try:
+            text = self._calibrator.apply(float(x_text.replace(",", ".")), float(y_text.replace(",", ".")))
+        except ValueError as error:
+            self._log.add(LogEvent(Severity.WARNING, "Calib", f"not applied: {error}"))
+            return
+        self._log.add(LogEvent(Severity.INFO, "Calib", text))
+        self._calibration.show(self._calibrator.offset_mm, self._calibrator.has_unsaved_change)
+
+    def _save_marker_offset(self) -> None:
+        try:
+            text = self._calibrator.save()
+        except (OSError, KeyError) as error:
+            self._log.add(LogEvent(Severity.ALARM, "Calib", f"save failed: {error}"))
+            return
+        self._log.add(LogEvent(Severity.INFO, "Calib", text))
+        self._calibration.show(self._calibrator.offset_mm, unsaved=False)
+
+    def _add_place_reading(self, shape: str, reading_text: str) -> None:
+        if self._cycle_state not in IDLE_STATES:
+            self._log.add(LogEvent(Severity.WARNING, "Calib", "stop the cycle before changing a place angle"))
+            return
+        if not reading_text.strip():
+            self._log.add(LogEvent(Severity.WARNING, "Calib", "type the rz reading or press USE LIVE first"))
+            return
+        try:
+            text = self._angle_calibrator.add_reading(shape, float(reading_text.replace(",", ".")))
+        except ValueError as error:
+            self._log.add(LogEvent(Severity.WARNING, "Calib", f"not applied: {error}"))
+            return
+        self._log.add(LogEvent(Severity.INFO, "Calib", text))
+        self._angles.clear_reading()
+        self._angle_shape_changed()
+
+    def _save_place_offset(self, shape: str) -> None:
+        try:
+            text = self._angle_calibrator.save(shape)
+        except (OSError, KeyError) as error:
+            self._log.add(LogEvent(Severity.ALARM, "Calib", f"save failed: {error}"))
+            return
+        self._log.add(LogEvent(Severity.INFO, "Calib", text))
+        self._angle_shape_changed()
+
+    def _angle_shape_changed(self) -> None:
+        shape = self._angles.shape.get()
+        self._angles.show_offset(self._angle_calibrator.offset_deg(shape),
+                                 self._angle_calibrator.has_unsaved_change(shape))
+        self._scene_changed = True
+
+    def _show_live_angle(self, scene: Scene) -> None:
+        shape = self._angles.shape.get()
+        plates = [item for item in scene.objects if item.shape == shape and item.world_pose is not None]
+        self._angles.show_live(plates[0].world_pose.rz_deg if plates else None, len(plates))
 
     def _select_from_table(self, shape: str, color: str) -> None:
         self._job.select(shape, color)
@@ -218,6 +312,10 @@ class HmiWindow:
     def _on_cycle(self, status: CycleStatus) -> None:
         self._cycle_state = status.state
         self._cycle.show(status)
+        if self._calibration is not None:
+            self._calibration.set_editable(status.state in IDLE_STATES)
+        if self._angles is not None:
+            self._angles.set_editable(status.state in IDLE_STATES)
         self._header.set_mode(status.state)
         self._scene_changed = True
 
@@ -228,6 +326,8 @@ class HmiWindow:
         self._objects.show(scene, shape, color)
         can_pick = self._robot_connected and self._cycle_state in (CycleState.READY, CycleState.STOPPED)
         self._job.set_matching(len(scene.matching(shape, color)), can_pick)
+        if self._angles is not None:
+            self._show_live_angle(scene)
         self._scene_changed = False
 
     def _update_camera_lamp(self) -> None:

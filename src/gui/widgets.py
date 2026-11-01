@@ -32,6 +32,32 @@ def panel(parent, title: str, fonts: theme.Fonts) -> tk.Frame:
     return outer
 
 
+def scrollable(parent) -> tk.Frame:
+    """A frame that scrolls vertically when the window is too short for it;
+    returns the inner frame to fill."""
+    canvas = tk.Canvas(parent, bg=theme.BACKGROUND, highlightthickness=0, borderwidth=0)
+    scrollbar = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    scrollbar.pack(side="right", fill="y")
+    canvas.pack(side="left", fill="both", expand=True)
+    inner = tk.Frame(canvas, bg=theme.BACKGROUND)
+    window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+    inner.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+    canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window_id, width=event.width))
+
+    def wheel(step: int) -> None:
+        pointer_widget = canvas.winfo_containing(*canvas.winfo_pointerxy())
+        over_canvas = pointer_widget is not None and str(pointer_widget).startswith(str(canvas))
+        if over_canvas and inner.winfo_height() > canvas.winfo_height():
+            canvas.yview_scroll(step, "units")
+
+    # X11/XWayland sends the wheel as buttons 4 and 5; Windows as <MouseWheel>.
+    canvas.bind_all("<Button-4>", lambda _event: wheel(-1), add="+")
+    canvas.bind_all("<Button-5>", lambda _event: wheel(1), add="+")
+    canvas.bind_all("<MouseWheel>", lambda event: wheel(-1 if event.delta > 0 else 1), add="+")
+    return inner
+
+
 # ----------------------------------------------------------------------
 # Header
 # ----------------------------------------------------------------------
@@ -445,3 +471,161 @@ class EventLog:
         rows = self._tree.get_children()
         if len(rows) > self._max_lines:
             self._tree.delete(*rows[self._max_lines:])
+
+
+# ----------------------------------------------------------------------
+# Calibration
+# ----------------------------------------------------------------------
+
+class MarkerCalibrationPanel:
+    """Type the pendant's marker-centre reading, APPLY it live, SAVE it to disk.
+
+    Only collects the numbers; the window decides whether a change is
+    allowed right now and reports the outcome in the event log.
+    """
+
+    ENTRY_WIDTH_CHARS = 9
+
+    def __init__(self, body: tk.Frame, fonts: theme.Fonts, offset_mm: tuple,
+                 on_apply: Callable, on_save: Callable) -> None:
+        self._fonts = fonts
+        tk.Label(body, text="Pendant: tool1 + wobj2, TCP on the marker centre -> X / Y.",
+                 bg=theme.PANEL, fg=theme.TEXT_MUTED, font=fonts.normal, justify="left",
+                 anchor="w").pack(fill="x", pady=(0, theme.PAD_PX))
+        entries = tk.Frame(body, bg=theme.PANEL)
+        entries.pack(fill="x")
+        self._x = self._entry(entries, "X [mm]", offset_mm[0])
+        self._y = self._entry(entries, "Y [mm]", offset_mm[1])
+
+        self._current = tk.Label(body, bg=theme.PANEL, fg=theme.TEXT, font=fonts.bold, anchor="w")
+        self._current.pack(fill="x", pady=(theme.PAD_PX, 0))
+        self._saved = tk.Label(body, bg=theme.PANEL, font=fonts.normal, anchor="w")
+        self._saved.pack(fill="x")
+
+        buttons = tk.Frame(body, bg=theme.PANEL)
+        buttons.pack(fill="x", pady=(theme.PAD_PX, 0))
+        self.apply_button = self._button(buttons, "APPLY", theme.SELECTED, theme.SELECTED_TEXT,
+                                         lambda: on_apply(self._x.get(), self._y.get()))
+        self.save_button = self._button(buttons, "SAVE TO CONFIG", theme.INACTIVE, theme.TEXT, on_save)
+        self.show(offset_mm, unsaved=False)
+
+    def _entry(self, parent, title: str, value_mm: float) -> tk.StringVar:
+        tk.Label(parent, text=title, bg=theme.PANEL, fg=theme.TEXT_MUTED, font=self._fonts.small).pack(side="left")
+        variable = tk.StringVar(value=f"{value_mm:.2f}")
+        tk.Entry(parent, textvariable=variable, width=self.ENTRY_WIDTH_CHARS, font=self._fonts.large,
+                 justify="right").pack(side="left", padx=(4, theme.PAD_PX * 2))
+        return variable
+
+    def _button(self, parent, text, background, foreground, command) -> tk.Button:
+        button = tk.Button(parent, text=text, font=self._fonts.large, bg=background, fg=foreground,
+                           activebackground=background, activeforeground=foreground, relief="flat",
+                           pady=theme.BUTTON_PAD_Y_PX, command=command, disabledforeground=theme.TEXT_MUTED)
+        button.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        return button
+
+    def show(self, offset_mm: tuple, unsaved: bool) -> None:
+        self._current.configure(text=f"In use:  X {offset_mm[0]:.2f}   Y {offset_mm[1]:.2f}  mm")
+        self._saved.configure(text="NOT SAVED - lost on restart" if unsaved else "Saved in settings.yaml",
+                              fg=theme.WARNING_TEXT if unsaved else theme.TEXT_MUTED,
+                              bg=theme.WARNING if unsaved else theme.PANEL)
+
+    def set_editable(self, editable: bool) -> None:
+        """Changing the frame mid-pick would split one pick across two offsets."""
+        self.apply_button.configure(state="normal" if editable else "disabled",
+                                    bg=theme.SELECTED if editable else theme.INACTIVE)
+
+
+class PlaceAnglePanel:
+    """Cavity angle per shape: lay the plate on the paper exactly as it sits
+    in its cavity, read rz (should be 0), add the reading to the offset.
+    """
+
+    ENTRY_WIDTH_CHARS = 7
+
+    def __init__(self, body: tk.Frame, fonts: theme.Fonts, shapes: list,
+                 on_add: Callable, on_save: Callable, on_shape_changed: Callable) -> None:
+        self._fonts = fonts
+        self._on_shape_changed = on_shape_changed
+        self.shape = tk.StringVar(value=shapes[0])
+        self._live_deg: Optional[float] = None
+        tk.Label(body, text="ONE plate on the paper, turned exactly as in its cavity.",
+                 bg=theme.PANEL, fg=theme.TEXT_MUTED, font=fonts.normal, anchor="w").pack(fill="x")
+
+        shape_row = tk.Frame(body, bg=theme.PANEL)
+        shape_row.pack(fill="x", pady=(theme.PAD_PX // 2, theme.PAD_PX // 2))
+        self._shape_buttons = {}
+        for shape in shapes:
+            button = tk.Button(shape_row, text=shape.upper(), font=fonts.bold, relief="flat",
+                               pady=theme.BUTTON_PAD_Y_PX // 2, command=lambda chosen=shape: self._select(chosen))
+            button.pack(side="left", fill="x", expand=True, padx=(0, 4))
+            self._shape_buttons[shape] = button
+
+        self._live = tk.Label(body, bg=theme.PANEL, fg=theme.TEXT, font=fonts.large, anchor="w")
+        self._live.pack(fill="x")
+        entry_row = tk.Frame(body, bg=theme.PANEL)
+        entry_row.pack(fill="x", pady=(theme.PAD_PX // 2, 0))
+        tk.Label(entry_row, text="rz read [deg]", bg=theme.PANEL, fg=theme.TEXT_MUTED,
+                 font=fonts.small).pack(side="left")
+        self._reading = tk.StringVar(value="")
+        tk.Entry(entry_row, textvariable=self._reading, width=self.ENTRY_WIDTH_CHARS, font=fonts.large,
+                 justify="right").pack(side="left", padx=(4, theme.PAD_PX))
+        tk.Button(entry_row, text="USE LIVE", font=fonts.bold, relief="flat", bg=theme.PANEL_BORDER,
+                  command=self._use_live).pack(side="left", fill="x", expand=True)
+
+        self._current = tk.Label(body, bg=theme.PANEL, fg=theme.TEXT, font=fonts.bold, anchor="w")
+        self._current.pack(fill="x", pady=(theme.PAD_PX // 2, 0))
+        self._saved = tk.Label(body, bg=theme.PANEL, font=fonts.normal, anchor="w")
+        self._saved.pack(fill="x")
+        buttons = tk.Frame(body, bg=theme.PANEL)
+        buttons.pack(fill="x", pady=(theme.PAD_PX // 2, 0))
+        self.add_button = tk.Button(buttons, text="ADD TO OFFSET", font=fonts.large, relief="flat",
+                                    bg=theme.SELECTED, fg=theme.SELECTED_TEXT, activebackground=theme.SELECTED,
+                                    disabledforeground=theme.TEXT_MUTED, pady=theme.BUTTON_PAD_Y_PX,
+                                    command=lambda: on_add(self.shape.get(), self._reading.get()))
+        self.add_button.pack(side="left", fill="x", expand=True, padx=(0, 4))
+        tk.Button(buttons, text="SAVE TO CONFIG", font=fonts.large, relief="flat", bg=theme.INACTIVE,
+                  fg=theme.TEXT, pady=theme.BUTTON_PAD_Y_PX,
+                  command=lambda: on_save(self.shape.get())).pack(side="left", fill="x", expand=True)
+        self._paint_shapes()
+        self.show_live(None, 0)
+
+    def _select(self, shape: str) -> None:
+        self.shape.set(shape)
+        self._reading.set("")
+        self._paint_shapes()
+        self._on_shape_changed()
+
+    def _paint_shapes(self) -> None:
+        for shape, button in self._shape_buttons.items():
+            chosen = shape == self.shape.get()
+            button.configure(bg=theme.SELECTED if chosen else theme.PANEL_BORDER,
+                             fg=theme.SELECTED_TEXT if chosen else theme.TEXT)
+
+    def _use_live(self) -> None:
+        if self._live_deg is not None:
+            self._reading.set(f"{self._live_deg:.1f}")
+
+    def show_live(self, rz_deg: Optional[float], count: int) -> None:
+        """rz of the selected shape on the paper; only trusted with exactly one plate."""
+        self._live_deg = rz_deg if count == 1 else None
+        name = self.shape.get().upper()
+        if count == 1 and rz_deg is not None:
+            self._live.configure(text=f"Live {name} rz:  {rz_deg:+.1f} deg", fg=theme.TEXT)
+        elif count == 0:
+            self._live.configure(text=f"No {name} on the paper", fg=theme.TEXT_MUTED)
+        else:
+            self._live.configure(text=f"{count} x {name} on the paper - leave one", fg=theme.ALARM)
+
+    def show_offset(self, offset_deg: float, unsaved: bool) -> None:
+        self._current.configure(text=f"{self.shape.get().upper()} offset in use:  {offset_deg:.1f} deg")
+        self._saved.configure(text="NOT SAVED - lost on restart" if unsaved else "Saved in settings.yaml",
+                              fg=theme.WARNING_TEXT if unsaved else theme.TEXT_MUTED,
+                              bg=theme.WARNING if unsaved else theme.PANEL)
+
+    def clear_reading(self) -> None:
+        self._reading.set("")
+
+    def set_editable(self, editable: bool) -> None:
+        self.add_button.configure(state="normal" if editable else "disabled",
+                                  text="ADD TO OFFSET" if editable else "CYCLE RUNNING",
+                                  bg=theme.SELECTED if editable else theme.INACTIVE)

@@ -291,7 +291,8 @@ coordinate:
   # Z of the suction cup on top of a plate, in wobj2 (the picking paper).
   # 2026-10-07 (late): wobj2 taught on the paper's corners, oframe
   # [626.676, -153.111, 385] rot [1,0,0,0]; plate top = world 391.75
-  # (jogged earlier) -> 6.8 above the new origin.
+  # (jogged earlier) -> 6.8 above the new origin. 2026-11-01: wobj2 taught
+  # again (landscape paper, origin z 380.321); 6.8 kept, picks worked.
   # robot/MainModule.mod refuses anything below PICK_Z_MIN_MM (-10).
   pick_z_mm: 6.8
   # The camera's pixel axes and the robot's wobj2 axes, paired up in the
@@ -306,8 +307,8 @@ coordinate:
   # wobj2's origin is on the marker. If wobj2 is taught elsewhere (e.g. on
   # the paper's corners), jog tool1 onto the marker centre with wobj2
   # selected and copy the pendant's X/Y here.
-  marker_offset_x_mm: 215.57
-  marker_offset_y_mm: 156.24
+  marker_offset_x_mm: 182.37
+  marker_offset_y_mm: 157.86
 
 # Reduces a detected orientation to the angle the wrist should actually turn
 # to, using each shape's rotational symmetry (see src/transform/orientation.py).
@@ -328,8 +329,8 @@ orientation:
   # cavity's pose: GUI read star -11.5, hexagon -3.1 on top of 26.9 / 1.4.
   place_offset_deg:
     circle: 0.0
-    hexagon: -1.7
-    star: 15.4
+    hexagon: -0.80
+    star: 20.60
 
 # Offline dataset labelling (tools/auto_label.py). None of this runs at pick
 # time: the detector that ships is the trained YOLO26-OBB model (T14), and
@@ -437,3 +438,7 @@ hmi:
   event_log_lines: 300
   # Inference samples in the running average on the performance panel.
   kpi_average_window: 20
+  # CALIBRATION tab: largest marker-offset change accepted in one go. A real
+  # paper shift is a few mm (8.8 mm on 2026-10-19); the paper was moved
+  # on purpose by 60 mm on 2026-11-01, so the guard only catches typos.
+  marker_offset_max_change_mm: 100.0

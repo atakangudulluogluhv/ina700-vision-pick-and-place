@@ -21,6 +21,7 @@ import queue
 import threading
 import tkinter as tk
 
+from src.app.calibration import MarkerOffsetCalibrator, PlaceOffsetCalibrator
 from src.app.cycle_controller import CycleController, CycleSettings
 from src.app.main import (
     build_aruco_locator, build_camera, build_coordinate_mapper, build_detector,
@@ -30,7 +31,7 @@ from src.app.messages import LinkState, LinkStatus
 from src.app.scene_store import SceneStore
 from src.app.workers import CaptureWorker, InferenceWorker, RobotLinkWorker, TransformWorker
 from src.comm.robot_server import MessageFormatter, RobotServer
-from src.core.config import Config
+from src.core.config import DEFAULT_SETTINGS_PATH, Config
 from src.gui.hmi import HmiSettings, HmiWindow
 
 # Only the newest frame and the newest detections are worth anything;
@@ -51,6 +52,13 @@ class Station:
         detection_queue = queue.Queue(maxsize=LATEST_ONLY)
         job_queue = queue.Queue()
         result_queue = queue.Queue()
+        # One mapper, shared: the transform thread reads it, the operator's
+        # calibration tab may re-set its marker offset (guarded by its Lock).
+        mapper = build_coordinate_mapper(config)
+        self.calibrator = MarkerOffsetCalibrator(mapper, args.settings or DEFAULT_SETTINGS_PATH,
+                                                 float(config.get("hmi.marker_offset_max_change_mm")))
+        normalizer = build_orientation_normalizer(config)
+        self.angle_calibrator = PlaceOffsetCalibrator(normalizer, args.settings or DEFAULT_SETTINGS_PATH)
 
         self.controller = CycleController(self.stop_event, self.command_queue, self.scene_store,
                                           job_queue, result_queue, self.ui_queue,
@@ -61,8 +69,8 @@ class Station:
             InferenceWorker(self.stop_event, build_detector(args, config), frame_queue, detection_queue,
                             self.ui_queue, float(config.get("cycle.inference_time_limit_sec"))),
             TransformWorker(self.stop_event, detection_queue, self.scene_store, self.ui_queue,
-                            build_aruco_locator(config), build_coordinate_mapper(config),
-                            build_orientation_normalizer(config), float(config.get("coordinate.pick_z_mm"))),
+                            build_aruco_locator(config), mapper,
+                            normalizer, float(config.get("coordinate.pick_z_mm"))),
             RobotLinkWorker(self.stop_event, build_station_server(args, config),
                             MessageFormatter(str(config.get("comm.message_template"))),
                             job_queue, result_queue, self.ui_queue, str(config.get("comm.ack_success_token"))),
@@ -156,7 +164,8 @@ def main(argv=None) -> int:
         root.destroy()
 
     HmiWindow(root, build_hmi_settings(config), list(config.get("yolo.class_names")),
-              station.ui_queue, station.command_queue, close)
+              station.ui_queue, station.command_queue, close, station.calibrator,
+              station.angle_calibrator)
     station.start()
     root.mainloop()
     return 0
