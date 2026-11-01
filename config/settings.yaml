@@ -91,10 +91,11 @@ yolo:
     - circle
     - hexagon
     - star
-  # Measured on the val set: true plates score 0.47-1.0, so a
-  # higher bar would start losing real stars and hexagons. Duplicates are
+  # An unassigned triangle once scored 0.53 as a hexagon in the lab, so the
+  # bar sits above that. On the 197 lab captures 0.65 drops about 5 % of the
+  # real plates (stars most), against about 1 % at 0.5. Duplicates are
   # removed by duplicate_distance_ratio instead.
-  min_confidence: 0.5
+  min_confidence: 0.65
   # Fraction of the box, around its centre, whose colour is read. The corners
   # of a circle's or star's box lie on the white paper.
   color_sample_scale: 0.5
