@@ -22,9 +22,9 @@ class ConfigError(KeyError):
 def write_scalar_values(path: Path | str, values: dict[str, float], section: str | None = None) -> None:
     """Overwrite numeric leaf values in a settings file in place.
 
-    Line by line instead of yaml.dump, so every comment -- the reasoning
-    behind each number -- survives. Each key must appear exactly once (within
-    `section`, the block under that key, when given).
+    Line by line instead of yaml.dump, so the comments in the file survive.
+    Each key must appear exactly once (within `section`, the block under that
+    key, when given).
     """
     settings_path = Path(path)
     full_text = settings_path.read_text(encoding="utf-8")

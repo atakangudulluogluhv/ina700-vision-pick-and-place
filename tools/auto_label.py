@@ -1,13 +1,11 @@
 """Turn the lab captures into a YOLO OBB dataset.
 
-Classical CV is used here as a *labelling tool only*. The detector that ships
-with the project is the trained YOLO26-OBB model, so nothing in this file runs
-at pick time and the "an AI model will be trained" requirement stands.
+Classical CV is only a labelling tool here. The detector at pick time is the
+trained YOLO26-OBB model; nothing in this file runs then.
 
-The classification code is the one already under test in ContourShapeDetector;
-only the segmentation strategy differs. Labelling runs offline, so it can
-afford the saturation strategy, which does not lose the plates that touch the
-dark table -- see src/vision/segmentation.py.
+The classification code is that of ContourShapeDetector; only the segmentation
+differs. The saturation strategy does not lose plates that touch the dark table
+(src/vision/segmentation.py).
 
 Usage:
     python tools/auto_label.py --captures-dir data/captures --output-dir data/dataset

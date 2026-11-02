@@ -1,11 +1,10 @@
 """The latest scene, shared between the transform thread and its readers.
 
 One writer (TransformWorker) and several readers (CycleController, HMI) touch
-the same object, so it is guarded by a threading.Lock -- the shared-resource
-idiom of the course exercise. The Condition built on that lock lets the cycle
-controller sleep until a frame newer than a given moment has arrived, which is
-how a pick is verified: the frame must have been taken *after* the robot
-reported the plate gone.
+the same object, so it is guarded by a threading.Lock. The Condition built on
+that lock lets the cycle controller sleep until a frame newer than a given
+moment has arrived. A pick is verified with such a frame: it must have been
+taken after the robot reported the plate gone.
 """
 
 import threading

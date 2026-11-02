@@ -1,14 +1,12 @@
 #!/usr/bin/env bash
 #
-# One-shot preparation of the Raspberry Pi for the INA700 lab session.
+# Prepares a Raspberry Pi for the INA700 station.
 #
-# RUN THIS AT HOME, WHILE THE PI STILL HAS INTERNET.
-# In the lab the Ethernet port is taken by the robot subnet, which has no route
-# to the internet, so nothing can be downloaded there any more.
+# Run this while the Pi has internet: in the lab the Ethernet port is on the
+# robot subnet, which has no route to the internet.
 #
-# The SD card prepared here is meant to be moved into the school's Pi 4. That
-# works as long as the image is 64-bit (aarch64): the same Raspberry Pi OS boots
-# on a Pi 3 and a Pi 4, and the wheels installed here are architecture specific.
+# The image must be 64-bit (aarch64). The same SD card then boots on a Pi 3 and
+# a Pi 4, because the installed wheels depend only on the architecture.
 #
 # Usage:
 #   bash tools/setup_pi.sh --check          only report what is already present
@@ -21,16 +19,14 @@ set -euo pipefail
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VENV_DIR="${PROJECT_DIR}/.venv"
 WHEEL_DIR="${PROJECT_DIR}/wheels"
+REQUIREMENTS_FILE="${PROJECT_DIR}/requirements-pi.txt"
 
-# Network values are fixed by the assignment: the Pi is the server on .2, the
-# ABB controller is the client on .3.
+# The Pi is the server on .2, the ABB controller is the client on .1.
 ETHERNET_DEVICE="eth0"
 PI_STATIC_IP="192.168.125.2/24"
-ROBOT_IP="192.168.125.3"
+ROBOT_IP="192.168.125.1"
 SERVER_PORT="5000"
 CONNECTION_NAME="robot-net"
-
-PYTHON_PACKAGES=(pypylon "opencv-contrib-python" numpy pyyaml)
 
 log()  { echo ""; echo "=== $* ==="; }
 info() { echo "    $*"; }
@@ -49,15 +45,12 @@ check_environment() {
     [ -x "${VENV_DIR}/bin/python" ] && python_binary="${VENV_DIR}/bin/python"
     "${python_binary}" - <<'PYEOF' || true
 import importlib
-for module_name in ("cv2", "numpy", "yaml", "pypylon"):
+for module_name in ("cv2", "cv2.aruco", "numpy", "yaml", "pypylon", "onnxruntime"):
     try:
         module = importlib.import_module(module_name)
-        print("    %-10s %s" % (module_name, getattr(module, "__version__", "installed")))
+        print("    %-12s %s" % (module_name, getattr(module, "__version__", "installed")))
     except ImportError:
-        print("    %-10s MISSING" % module_name)
-import importlib.util
-print("    %-10s %s" % ("cv2.aruco",
-      "present" if importlib.util.find_spec("cv2") else "check opencv-contrib"))
+        print("    %-12s MISSING" % module_name)
 PYEOF
 
     log "Network"
@@ -72,21 +65,21 @@ install_python_dependencies() {
     # Bookworm marks the system Python as externally managed, so a virtual
     # environment is the only clean way to pip install on it.
     if [ ! -d "${VENV_DIR}" ]; then
-        info "creating a virtual environment with access to the system OpenCV"
+        info "creating a virtual environment with access to the system packages (Tk)"
         python3 -m venv --system-site-packages "${VENV_DIR}"
     fi
 
     if [ -d "${WHEEL_DIR}" ] && compgen -G "${WHEEL_DIR}/*.whl" > /dev/null; then
         info "installing from the offline wheels in ${WHEEL_DIR}"
-        "${VENV_DIR}/bin/pip" install --no-index --find-links "${WHEEL_DIR}" "${PYTHON_PACKAGES[@]}"
+        "${VENV_DIR}/bin/pip" install --no-index --find-links "${WHEEL_DIR}" -r "${REQUIREMENTS_FILE}"
     else
         info "no offline wheels found, downloading from PyPI"
         "${VENV_DIR}/bin/pip" install --upgrade pip
-        "${VENV_DIR}/bin/pip" install "${PYTHON_PACKAGES[@]}"
+        "${VENV_DIR}/bin/pip" install -r "${REQUIREMENTS_FILE}"
     fi
 
     info "verifying the imports"
-    "${VENV_DIR}/bin/python" -c "import cv2, numpy, yaml, pypylon.pylon; print('    all imports OK')"
+    "${VENV_DIR}/bin/python" -c "import cv2.aruco, numpy, yaml, onnxruntime, pypylon.pylon; print('    all imports OK')"
 }
 
 # --------------------------------------------------------------------------
@@ -112,7 +105,7 @@ configure_network() {
     info "current address:"
     ip -4 addr show "${ETHERNET_DEVICE}" | sed 's/^/    /'
     info "testing the robot (fails until the controller is powered on):"
-    ping -c 2 -W 2 "${ROBOT_IP}" || info "no answer from ${ROBOT_IP} yet -- expected at home"
+    ping -c 2 -W 2 "${ROBOT_IP}" || info "no answer from ${ROBOT_IP} yet; expected until the Pi is on the robot network"
 
     if command -v ufw > /dev/null && sudo ufw status | grep -q "Status: active"; then
         info "opening port ${SERVER_PORT} in ufw"

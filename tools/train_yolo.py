@@ -2,10 +2,10 @@
 
 Runs on the PC only: the Pi has no torch and only loads the exported ONNX
 file. Every hyper-parameter comes from the `training` section of
-config/settings.yaml, so a retrain in the lab never needs a code edit.
+config/settings.yaml.
 
 The dataset is the one written by tools/auto_label.py and contains only the
-three assigned shapes, so the trained model cannot see the other two.
+three assigned shapes, so these are the model's only classes.
 
 Usage:
     python tools/train_yolo.py                 # train, then export
@@ -84,8 +84,7 @@ def export(weights_path: Path, settings: Config) -> Path:
             imgsz=int(settings.get("export_image_size_px")),
             simplify=True,
             # ultralytics 8.4 keeps the NMS-free one-to-one head only when nms
-            # is exactly False; the default None silently exports the raw
-            # (1, 8, 8400) head, which would need NMS code on the Pi.
+            # is exactly False; the default None exports the raw (1, 8, 8400) head, which would need NMS code on the Pi.
             nms=False,
         )
     )

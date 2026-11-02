@@ -1,8 +1,8 @@
 """Tests for the station threads: the cycle state machine and its helpers.
 
 The controller runs in the test's own thread; a fake robot and a fake camera
-run beside it on real queues, so the retry and verification logic is tested
-exactly as the station uses it -- only the hardware is simulated.
+run beside it on real queues, so the retry and verification logic is tested as
+the station uses it, with only the hardware simulated.
 
     python -m pytest tests -q
 """
@@ -40,7 +40,7 @@ MARKER_STAND_IN = object()  # Scene only checks that a marker pose is present
 def plate(object_id, shape, color, x_mm):
     detection = Detection(shape, color, 100.0 * object_id, 100.0, 0.0, confidence=0.9,
                           width_px=50.0, height_px=50.0)
-    return SceneObject(object_id, detection, WorldPose(x_mm, 0.0, -208.0, 10.0))
+    return SceneObject(object_id, detection, WorldPose(x_mm, 0.0, 6.8, 10.0))
 
 
 class FakeCamera(threading.Thread):
@@ -128,6 +128,21 @@ def test_nothing_is_sent_when_no_plate_matches():
     camera.running = False
     assert robot.received == []
     assert last_status(ui).failed_picks == 0, "a selection with no match is not a failed pick"
+
+
+def test_job_the_robot_never_received_is_not_sent_later():
+    """A robot connecting after a timeout must not run a pick nobody is waiting for."""
+    store, jobs, results, ui = SceneStore(), queue.Queue(), queue.Queue(), queue.Queue()
+    camera = FakeCamera(store, [plate(1, "star", "green", 50.0)], picks_remove_plate=False)
+    settings = CycleSettings(max_pick_retries=2, objects_per_cycle=3, search_timeout_sec=FAST_TIMEOUT_SEC,
+                             result_timeout_sec=SCENE_PERIOD_SEC, verify_pick=True,
+                             verify_timeout_sec=FAST_TIMEOUT_SEC, verify_radius_mm=15.0)
+    controller = CycleController(threading.Event(), queue.Queue(), store, jobs, results, ui, settings)
+    camera.start()
+    controller._process(PickRequest("star", ANY_COLOR))
+    camera.running = False
+    assert jobs.empty()
+    assert last_status(ui).state.value == "FAULT"
 
 
 def test_robot_is_sent_the_plates_own_colour():

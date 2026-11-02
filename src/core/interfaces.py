@@ -1,10 +1,9 @@
 """Abstract boundaries of the vision pipeline and the data class they exchange.
 
-The interfaces are deliberately small (interface segregation): a camera only
-knows how to hand over a frame, a detector only knows how to turn a frame into
-detections. Nothing here imports pypylon, ultralytics or socket, so main.py is
-free to inject whichever implementation the situation calls for -- a Basler
-camera in the lab, a file source at home (dependency inversion).
+The interfaces are small (interface segregation): a camera only hands over a
+frame, a detector only turns a frame into detections. Nothing here imports
+pypylon, ultralytics or socket, so main.py can inject a Basler camera or a file
+source without any other class noticing (dependency inversion).
 """
 
 from abc import ABC, abstractmethod
@@ -18,9 +17,8 @@ FULL_TURN_DEG = 360.0
 class Detection:
     """One detected object: its class, colour, pixel centre and angle.
 
-    Attributes are private with validating properties because an out-of-range
-    angle or a negative pixel coordinate is a bug that must surface here rather
-    than silently reach the robot as a bad target.
+    Attributes are private with validating properties, so an out-of-range angle
+    or a negative pixel coordinate fails here instead of reaching the robot.
     """
 
     def __init__(
@@ -163,9 +161,8 @@ class CameraSource(ABC):
 class ShapeDetector(ABC):
     """Anything that turns a frame into a list of detections.
 
-    The contour detector used in the lab and the trained YOLO detector of the
-    final project are interchangeable behind this interface, which is what
-    makes swapping them a one-line change in main.py (Liskov / open-closed).
+    The contour detector and the trained YOLO detector are interchangeable
+    behind this interface (Liskov / open-closed).
     """
 
     @abstractmethod

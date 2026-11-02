@@ -81,7 +81,7 @@ class PlaceOffsetCalibrator:
         self._saved_deg = {}
 
     def adjustable_shapes(self, shapes: list) -> list:
-        """Shapes whose turn matters -- a circle has no orientation."""
+        """Shapes whose turn matters; a circle has no orientation."""
         return [shape for shape in shapes if self._normalizer.symmetry_period_deg(shape) > 0.0]
 
     def offset_deg(self, shape: str) -> float:

@@ -7,10 +7,10 @@ which we are not allowed to edit:
 
   * The server must already be listening before the robot program is started.
   * There is no framing. SocketReceive \\Str reads whatever arrived, so the
-    exchange has to stay a strict request/response lockstep -- one message out,
-    one answer back -- and no newline is appended.
-  * A RAPID string holds 80 characters and truncates silently beyond that,
-    so every outgoing message is checked before it is sent.
+    exchange has to stay in strict lockstep (one message out, one answer back)
+    and no newline is appended.
+  * A RAPID string holds 80 characters and cuts off anything longer, so every
+    outgoing message is checked before it is sent.
 
 Encodings follow the course's reference socket example: UTF-8 out, latin-1 in.
 """
@@ -67,7 +67,7 @@ class RobotServer:
         """Bind and listen. Must happen before the robot program is started."""
         self._server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         # Without SO_REUSEADDR a restart within the TIME_WAIT window fails with
-        # "address already in use", which costs minutes during a 3-hour exam.
+        # "address already in use".
         self._server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self._server_socket.bind((self._host, self._port))
@@ -180,11 +180,9 @@ class RobotServer:
 
 
 class MessageFormatter:
-    """Renders a detection into the exact string the RAPID routine parses.
+    """Renders a detection into the string robot/MainModule.mod parses.
 
-    The layout is a template from settings.yaml rather than hard-coded, because
-    the RAPID routine already exists and we do not yet know which layout it
-    expects. Adapting in the lab is then a one-line YAML edit, not a code edit.
+    The layout is a template in settings.yaml (comm.message_template).
     """
 
     def __init__(self, template: str) -> None:
@@ -200,7 +198,7 @@ class MessageFormatter:
         z_mm: float = 0.0,
         rz_deg: float = 0.0,
     ) -> str:
-        """Fill the template; unused placeholders simply stay unused."""
+        """Fill the template; fields it does not mention are ignored."""
         return self._template.format(
             id=message_id,
             shape=shape,

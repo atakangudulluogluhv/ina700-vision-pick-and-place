@@ -155,8 +155,7 @@ def main(argv=None) -> int:
     root = tk.Tk()
     if args.fullscreen:
         root.attributes("-fullscreen", True)
-        # Fullscreen hides the window border, so without this there is no way
-        # to reach the close button -- Escape drops back to a normal window.
+        # Fullscreen hides the close button; Escape returns to a normal window.
         root.bind("<Escape>", lambda event: root.attributes("-fullscreen", False))
 
     def close() -> None:

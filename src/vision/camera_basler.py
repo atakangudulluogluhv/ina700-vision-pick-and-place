@@ -1,13 +1,10 @@
 """Basler industrial camera source, driven through pypylon.
 
-The grab strategy is LatestImageOnly on purpose: the pipeline must always act
-on what the workspace looks like now. With the default strategy the frames
-queue up and the robot would be sent the position an object had several
-seconds ago.
+The grab strategy is LatestImageOnly: with the default strategy frames queue up
+and the robot would be sent the position an object had several seconds ago.
 
-pypylon is imported inside the constructor rather than at module level so that
-the rest of the project -- and the file based rehearsal at home -- still runs
-on a machine where pypylon is not installed.
+pypylon is imported inside the constructor so that the rest of the project still
+runs on a machine without it.
 """
 
 from src.core.interfaces import CameraSource
@@ -52,8 +49,7 @@ class BaslerCamera(CameraSource):
         devices = transport_layer_factory.EnumerateDevices()
         if not devices:
             raise RuntimeError(
-                "no Basler camera found. Check the cable, and for a GigE camera "
-                "check that its IP is in the same subnet as this machine."
+                "no Basler camera found. Check the USB 3.0 cable and port."
             )
 
         if serial_number:
@@ -65,20 +61,6 @@ class BaslerCamera(CameraSource):
                 "camera with serial " + serial_number + " not found. Attached: " + found
             )
         return transport_layer_factory.CreateDevice(devices[0])
-
-    @property
-    def device_model_name(self) -> str:
-        """Model name of the attached camera, logged at start-up."""
-        return self._device_model_name
-
-    def describe_device(self) -> str:
-        """Full identification of the camera, printed once at startup."""
-        info = self._camera.GetDeviceInfo()
-        return (
-            "model=" + info.GetModelName()
-            + " serial=" + info.GetSerialNumber()
-            + " interface=" + info.GetDeviceClass()
-        )
 
     def read(self):
         """Return the newest BGR frame, or None if this grab failed."""

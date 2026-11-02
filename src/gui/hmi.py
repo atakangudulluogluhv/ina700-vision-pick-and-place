@@ -1,4 +1,4 @@
-"""The operator screen (runs on the main thread -- Tk is not thread-safe).
+"""The operator screen. It runs on the main thread because Tk is not thread-safe.
 
 The window never calls into a worker. It only
 
@@ -16,7 +16,6 @@ from tkinter import ttk
 from typing import Callable, Optional
 
 from src.app.calibration import MarkerOffsetCalibrator, PlaceOffsetCalibrator
-
 from src.app.messages import (
     CycleState, CycleStatus, LinkState, LinkStatus, LogEvent, OperatorCommand,
     PickRequest, Scene, Severity,
@@ -31,8 +30,8 @@ RIGHT_COLUMN_WIDTH_PX = 430
 # Laid out for a 1280 x 720 panel, the smallest screen the station expects.
 MIN_WINDOW_SIZE_PX = (1100, 700)
 BOTTOM_ROW_HEIGHT_PX = 170
-# Alarm keys (LogEvent.alarm_key) that clear themselves once the condition
-# they describe is gone -- the marker is back, images arrive, the robot is in.
+# Alarm keys (LogEvent.alarm_key) that clear themselves once the condition is
+# gone: the marker is back, images arrive, the robot has connected.
 MARKER_ALARM = "marker"
 CAMERA_ALARM = "camera"
 INFERENCE_ALARM = "inference"

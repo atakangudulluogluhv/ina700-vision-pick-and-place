@@ -1,24 +1,12 @@
-"""Identifies the ArUco marker actually lying on the picking paper.
+"""Finds out why the ArUco marker on the picking paper is not detected.
 
-A lab session lost hours to a marker that detectMarkers()
-never returned, and two very different causes look identical from the outside:
-
-  * the printed marker belongs to another dictionary than aruco.dictionary,
-    so the library is blind to it however perfect the print is, or
-  * it is the right dictionary but the print is too glossy or too dim for the
-    black cells to read as black, so the bits decode with errors.
-
-This tool separates the two. It sweeps every predefined dictionary OpenCV
-ships, first with the stock detector parameters and then with parameters
-relaxed for a low-contrast print. If nothing decodes it falls back to the
-square candidates the detector rejected and measures the ink contrast inside
-them, which is the number that tells a printing problem from a wrong
-dictionary.
+Either the printed marker belongs to another dictionary than aruco.dictionary, or
+the print is too glossy or dim to decode. This tool tries every predefined
+dictionary, first with the stock detector parameters and then with relaxed ones. If
+nothing decodes, it measures the ink contrast inside the rejected square candidates.
 
     python tools/aruco_probe.py --camera basler
     python tools/aruco_probe.py --image data/captures/capture_0001.png
-
-Whatever it finds is a one-line change in config/settings.yaml (aruco.dictionary).
 """
 
 import argparse
@@ -64,6 +52,11 @@ RELAXED_THRESH_WIN_STEP = 10
 RELAXED_CELL_MARGIN = 0.33
 RELAXED_ERROR_CORRECTION_RATE = 1.0
 
+# Continuous auto-exposure needs about 15-20 frames to settle after the camera
+# opens (measured in the lab). A frame taken earlier is under-exposed and gets
+# misdiagnosed as a bad print.
+EXPOSURE_WARMUP_FRAME_COUNT = 20
+
 ANNOTATION_COLOR_HIT = (0, 255, 0)
 ANNOTATION_COLOR_CANDIDATE = (0, 128, 255)
 ANNOTATION_THICKNESS = 4
@@ -87,7 +80,7 @@ def relaxed_parameters() -> cv2.aruco.DetectorParameters:
     parameters.adaptiveThreshWinSizeStep = RELAXED_THRESH_WIN_STEP
     parameters.perspectiveRemoveIgnoredMarginPerCell = RELAXED_CELL_MARGIN
     parameters.errorCorrectionRate = RELAXED_ERROR_CORRECTION_RATE
-    # maxErroneousBitsInBorderRate is deliberately left alone: the all-black
+    # maxErroneousBitsInBorderRate stays at its default: the all-black
     # border is the one structural check that keeps a dark blob from decoding
     # as a tag, and relaxing it filled dim frames with phantom markers.
     return parameters
@@ -255,7 +248,7 @@ def annotate(frame: np.ndarray, hits: list, candidates: list, output_path: Path)
 
 
 def grab_frame(args: argparse.Namespace, config: Config) -> np.ndarray:
-    """One frame, from the file named on the command line or from the camera."""
+    """One frame, from the file named on the command line or from the settled camera."""
     if args.image:
         frame = cv2.imread(args.image)
         if frame is None:
@@ -271,6 +264,8 @@ def grab_frame(args: argparse.Namespace, config: Config) -> np.ndarray:
         auto_exposure=bool(config.get("camera.basler.auto_exposure", True)),
     )
     try:
+        for _ in range(EXPOSURE_WARMUP_FRAME_COUNT):
+            camera.read()
         frame = camera.read()
     finally:
         camera.release()

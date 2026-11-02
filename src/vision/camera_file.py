@@ -1,18 +1,15 @@
 """Camera sources that need no Basler hardware.
 
-FileCamera exists for two reasons. It lets the whole pipeline be developed and
-demonstrated at home without the industrial camera, and it is the fallback in
-the lab if the Basler cannot be reached: the robot side can still be tested
-end to end. Because it satisfies the same CameraSource interface as
-BaslerCamera, swapping the two is a command line flag, never a code change
-(Liskov substitution).
+FileCamera lets the whole pipeline run without the industrial camera, for
+development and as a fallback if the Basler cannot be reached. It implements the
+same CameraSource interface as BaslerCamera, so swapping them is a command line
+flag (Liskov substitution).
 """
 
 import time
 from pathlib import Path
 
 import cv2
-import numpy as np
 
 from src.core.interfaces import CameraSource
 

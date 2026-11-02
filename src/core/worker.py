@@ -1,7 +1,6 @@
 """Base classes for the pipeline threads (assignment: one distinct job per thread).
 
-The idioms are the ones the course's threading exercise teaches,
-used the same way here so they are easy to recognise:
+The threading idioms from the course exercise:
 
     threading.Event                 shared stop flag for every worker
     queue.get(timeout=...)          never block forever, so a stop is noticed

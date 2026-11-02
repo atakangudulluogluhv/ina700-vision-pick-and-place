@@ -1,11 +1,9 @@
 """Reduces a world-frame angle to the turn the wrist should actually make.
 
-Sending the raw detected angle to the robot is wrong: a square photographed at
-95 degrees does not need a 95 degree turn, it needs a 5 degree one, since a
-90 degree turn puts it back in an indistinguishable pose (symmetry-aware
-normalisation). This module knows nothing about pixels or markers -- it only takes an already-world-frame angle in and
-a shape name, which keeps it trivially testable and reusable once the AI
-detector replaces ContourShapeDetector.
+The raw detected angle is not what the wrist should do: a star at 75 degrees
+needs a 3 degree turn, not 75, because a 72 degree turn leaves it looking the
+same. This module knows nothing about pixels or markers; it takes a world-frame
+angle and a shape name.
 """
 
 import threading

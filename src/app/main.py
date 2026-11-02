@@ -1,25 +1,17 @@
-"""Composition root of the lab application.
+"""Object construction shared by both programs, and a console tool for calibration.
 
-This is the only module that decides which concrete camera, detector and
-transport are used; every other class receives its collaborators through its
-constructor (dependency inversion). Nothing below the app
-layer ever constructs a pylon camera or opens a socket on its own, which is
-what makes the file based rehearsal at home and the Basler run in the lab the
-same program.
+The build_* functions are the only place that chooses a concrete camera,
+detector or mapper; every other class gets its collaborators through its
+constructor (dependency inversion). src/app/station.py, the final program, uses
+them too.
 
-Two run modes, deliberately independent of each other:
-
-  auto    camera -> shape detection -> message -> robot
-  manual  keyboard -> message -> robot
-
-Manual mode exists so that the robot side can be proven even if the camera
-cannot be reached: camera trouble and network trouble are separate risks and
-must not be able to block each other during the lab.
+Run on its own, this module shows the live detections and the marker axes in an
+OpenCV window and prints the PICK message for each frame. It is meant for
+calibration, usually with --no-robot.
 
 Usage:
+    python -m src.app.main --camera basler --no-robot
     python -m src.app.main --camera file --no-robot
-    python -m src.app.main --camera file --mode manual --host 127.0.0.1
-    python -m src.app.main --camera basler --mode auto
 """
 
 import argparse
@@ -41,7 +33,11 @@ from src.vision.aruco_locator import ArucoLocator, MarkerPose
 from src.vision.camera_file import FileCamera, WebcamCamera
 from src.vision.camera_scaled import DownscalingCamera
 from src.vision.color import ColorClassifier
-from src.vision.orientation_refiner import OrientationRefiningDetector, VertexOrientationEstimator
+from src.vision.orientation_refiner import (
+    OrientationRefiningDetector,
+    OutlineCornerFilter,
+    VertexOrientationEstimator,
+)
 from src.vision.segmentation import OtsuSegmenter, Segmenter
 from src.vision.shape_detector_contour import ContourShapeDetector
 from src.vision.shape_detector_yolo import YoloObbDetector
@@ -124,10 +120,10 @@ def build_segmenter(config: Config) -> Segmenter:
 def build_detector(args: argparse.Namespace, config: Config) -> ShapeDetector:
     """Create the detector chosen on the command line.
 
-    YOLO is the detector of the submission; the contour detector stays
-    as the lab fallback. Both honour ShapeDetector, so nothing downstream
-    knows which one is running (Liskov). Either way the angle is replaced by
-    the measured corner direction, because a box angle cannot orient a star.
+    YOLO is the normal detector and the contour detector is the fallback. Both
+    implement ShapeDetector, so nothing downstream knows which one is running
+    (Liskov). Either way the angle is replaced by the measured corner direction,
+    because a box angle cannot orient a star.
     """
     if args.detector == "contour":
         inner = ContourShapeDetector(
@@ -136,7 +132,13 @@ def build_detector(args: argparse.Namespace, config: Config) -> ShapeDetector:
             build_segmenter(config),
         )
     else:
-        inner = build_yolo_detector(config)
+        outline_filter = config.section("outline_filter")
+        inner = OutlineCornerFilter(
+            build_yolo_detector(config),
+            build_orientation_estimator(config),
+            min_corners=int(outline_filter.get("min_corners")),
+            tolerance_ratio=float(outline_filter.get("corner_tolerance_ratio")),
+        )
     return OrientationRefiningDetector(inner, build_orientation_estimator(config))
 
 
@@ -290,7 +292,7 @@ def _draw_marker_axes(annotated, marker_pose: MarkerPose) -> None:
 
 
 def save_frame(frame) -> Path:
-    """Write a raw frame to data/captures for the future training dataset."""
+    """Write a raw frame to data/captures, where the training dataset is collected."""
     CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
     file_path = CAPTURE_DIR / ("capture_" + datetime.now().strftime("%Y%m%d_%H%M%S_%f") + ".png")
     cv2.imwrite(str(file_path), frame)
@@ -300,9 +302,8 @@ def save_frame(frame) -> Path:
 def select_target(detections, world_poses):
     """Pick the object to announce, paired with its world pose.
 
-    Grade level III later replaces this with the operator's choice from the
-    GUI; for the lab exercise the largest contour is the stable choice, since
-    it is the least likely to be a noise blob.
+    This console tool has no operator selection, so it takes the largest
+    object, which is the least likely to be a noise blob.
     """
     if not detections:
         return None, None
@@ -315,7 +316,7 @@ def select_target(detections, world_poses):
 # --------------------------------------------------------------------------
 
 class ShapeTriggerApp:
-    """Drives one detection cycle and reports the result to the robot."""
+    """Runs detection frame by frame and reports the chosen object to the robot."""
 
     def __init__(
         self,
@@ -354,7 +355,7 @@ class ShapeTriggerApp:
             cv2.namedWindow(WINDOW_NAME, cv2.WINDOW_NORMAL)
 
     def run_auto(self) -> None:
-        """Camera loop: detect, show, and announce the shape to the robot."""
+        """Camera loop: detect, show, and send the chosen object to the robot."""
         print("[auto] space = send the current shape, s = save frame, q = quit")
         frame_count = 0
         while True:
@@ -373,8 +374,7 @@ class ShapeTriggerApp:
             detections = self._detector.detect(region)
             inference_time_sec = time.perf_counter() - start_time_sec
 
-            # Printing the measured inference time is its own requirement of
-            # the assignment, not just a debugging aid.
+            # The assignment requires the measured inference time to be printed.
             self._report_inference(detections, inference_time_sec)
 
             marker_pose = self._locate_marker(region)
@@ -394,24 +394,6 @@ class ShapeTriggerApp:
                     self._announce(target, target_pose, force=True)
                 else:
                     print("[send] skipped: ArUco marker not found this frame")
-
-    def run_manual(self) -> None:
-        """Keyboard loop: prove the robot link without involving the camera."""
-        known_shapes = self._config.section("shapes").keys()
-        print("[manual] known shapes: " + ", ".join(known_shapes))
-        print("[manual] type a shape name and press Enter, or 'quit' to stop")
-        while True:
-            try:
-                typed = input("shape> ").strip().lower()
-            except EOFError:
-                return
-            if typed in ("quit", "exit", "q"):
-                return
-            if not typed:
-                continue
-            if typed not in known_shapes:
-                print("[manual] unknown shape, sending it anyway so the RAPID side can be probed")
-            self._send_message(self._next_message_id(), typed, "unknown")
 
     def _report_inference(self, detections, inference_time_sec: float) -> None:
         """Print the timing and what was found, once per frame."""
@@ -466,12 +448,11 @@ class ShapeTriggerApp:
         self._message_id += 1
         return self._message_id
 
-    def _send_message(self, message_id: int, shape: str, color: str, world_pose: WorldPose = None) -> None:
+    def _send_message(self, message_id: int, shape: str, color: str, world_pose: WorldPose) -> None:
         """Format, send, and wait for the robot's acknowledgement."""
-        pose = world_pose if world_pose is not None else WorldPose(0.0, 0.0, 0.0, 0.0)
         message = self._formatter.format(
             message_id=message_id, shape=shape, color=color,
-            x_mm=pose.x_mm, y_mm=pose.y_mm, z_mm=pose.z_mm, rz_deg=pose.rz_deg,
+            x_mm=world_pose.x_mm, y_mm=world_pose.y_mm, z_mm=world_pose.z_mm, rz_deg=world_pose.rz_deg,
         )
         self._last_sent_time_sec = time.monotonic()
 
@@ -505,7 +486,7 @@ class ShapeTriggerApp:
 # --------------------------------------------------------------------------
 
 def parse_arguments(argv=None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="INA700 lab: detect a shape and trigger the RAPID routine")
+    parser = argparse.ArgumentParser(description="INA700 calibration console: live detections and PICK messages")
     parser.add_argument("--camera", choices=("basler", "file", "webcam"), default="file",
                         help="which camera source to build")
     parser.add_argument("--source", default=None,
@@ -513,9 +494,7 @@ def parse_arguments(argv=None) -> argparse.Namespace:
     parser.add_argument("--webcam-index", type=int, default=0,
                         help="device index for --camera webcam")
     parser.add_argument("--detector", choices=("yolo", "contour"), default="yolo",
-                        help="yolo = trained model (submission), contour = classical CV lab fallback")
-    parser.add_argument("--mode", choices=("auto", "manual"), default="auto",
-                        help="auto = drive from the camera, manual = type shapes by hand")
+                        help="yolo = trained model, contour = classical CV fallback")
     parser.add_argument("--no-robot", action="store_true",
                         help="run the vision side only, without opening the server")
     parser.add_argument("--host", default=None, help="override comm.host from settings.yaml")
@@ -525,7 +504,7 @@ def parse_arguments(argv=None) -> argparse.Namespace:
     parser.add_argument("--no-window", action="store_true",
                         help="do not open an OpenCV window (headless Pi over SSH)")
     parser.add_argument("--max-frames", type=int, default=0,
-                        help="stop after this many frames (0 = run until 'q'); used by the tests")
+                        help="stop after this many frames (0 = run until 'q')")
     return parser.parse_args(argv)
 
 
@@ -551,13 +530,6 @@ def main(argv=None) -> int:
 
     camera = None
     try:
-        # Manual mode never touches the camera, so a camera fault cannot stop
-        # the robot side from being demonstrated.
-        if args.mode == "manual":
-            app = ShapeTriggerApp(None, None, formatter, server, config, show_window=False)
-            app.run_manual()
-            return 0
-
         camera = build_camera(args, config)
         print("[camera] " + str(camera))
         detector = build_detector(args, config)

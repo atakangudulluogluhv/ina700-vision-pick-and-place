@@ -1,20 +1,15 @@
-"""Trained YOLO26-OBB shape detector -- the detector of the final submission.
+"""Trained YOLO26-OBB shape detector.
 
-Runs the exported ONNX file through onnxruntime, so the Pi needs neither torch
-nor ultralytics. The inference session is built in main.py and
-injected here: this class never loads a model itself (dependency inversion).
+Runs the exported ONNX file through onnxruntime, so the Pi needs neither torch nor
+ultralytics. The session is built in main.py and injected (dependency inversion).
 
-The ONNX graph is exported with the NMS-free one-to-one head (see
-tools/train_yolo.py), so its single output already holds the final
-detections, one row each:
+The graph has the NMS-free one-to-one head (tools/train_yolo.py), so its output is
+already one row per detection, in the pixels of the letterboxed input:
 
     [center_x, center_y, width, height, confidence, class_index, angle_rad]
 
-in the pixel space of the square letterboxed network input. The only
-post-processing left is undoing that letterbox.
-
-The model was trained on the three assigned shapes only, so it cannot report
-the other two.
+The model has only the three assigned classes, but it can mistake another plate for
+one of them; yolo.min_confidence and OutlineCornerFilter deal with that.
 """
 
 import math
@@ -126,10 +121,9 @@ class YoloObbDetector(ShapeDetector):
     def _drop_duplicates(self, rows: np.ndarray) -> list[np.ndarray]:
         """Keep the strongest box per plate.
 
-        The one-to-one head is meant to need no NMS, but on this small dataset
-        it still emits a weak second box on a plate now and then (measured
-        on the lab captures: a 0.57 star 4 px from a 0.85 one). Sending both would make
-        the robot pick the same plate twice.
+        The one-to-one head should need no NMS, but on this small dataset it
+        sometimes emits a weak second box on a plate (on the lab captures, a 0.57
+        star 4 px from a 0.85 one).
         """
         kept: list[np.ndarray] = []
         for row in rows[np.argsort(-rows[:, CONFIDENCE_COLUMN])]:
@@ -178,10 +172,9 @@ class YoloObbDetector(ShapeDetector):
     def _read_color(self, frame, center_px, size_px, angle_deg):
         """Colour name of the box centre, or None when the plate is white.
 
-        White is the one colour never picked;
-        black and grey plates are kept. Whiteness is judged against the paper
-        right around the box. Only small patches are converted, never the
-        whole 5 MP frame.
+        White is the one colour never picked; black and grey plates are kept.
+        Whiteness is judged against the paper right around the box. Only small
+        patches are converted, never the whole 5 MP frame.
         """
         paper_value = self._color_classifier.paper_value(
             self._surroundings(frame, center_px, size_px)
@@ -190,7 +183,7 @@ class YoloObbDetector(ShapeDetector):
         if patch is None:
             return None
         # With no paper in view whiteness cannot be judged; the model saw a
-        # plate, so it is kept rather than silently dropped.
+        # plate, so it is kept.
         if paper_value is not None and self._color_classifier.is_white(patch, mask, paper_value):
             return None
         return self._color_classifier.classify(patch, mask, paper_value)

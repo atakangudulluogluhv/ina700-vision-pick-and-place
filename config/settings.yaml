@@ -1,12 +1,9 @@
 # INA700 vision system settings.
 #
-# Every tunable value lives here so that nothing has to be edited in code during
-# the 3-hour lab session.
+# Every tunable value is here, so calibration in the lab needs no code changes.
 # Units are part of the key name: _mm, _px, _deg, _sec.
 
 camera:
-  # Which implementation main.py builds when --camera is not given.
-  default_source: "basler"
   # Whole-number factor every frame is shrunk by before anything else sees it
   # (1 = sensor resolution). The network always gets a 416 px image anyway, so
   # 2 costs no detection accuracy but quarters the work around it (ArUco
@@ -21,10 +18,9 @@ camera:
     # Optional serial number to pick a specific camera when several are attached.
     # Leave empty to take the first device the transport layer enumerates.
     serial_number: ""
-    # The camera's stored UserSet ships with a fixed 3 ms exposure, tuned for
-    # whatever light happened to be in the room at the time -- it silently
-    # under-exposes (and loses the ArUco marker's contrast) the moment room
-    # lighting is dimmer. Continuous auto-exposure adapts every frame instead.
+    # The camera's stored UserSet has a fixed 3 ms exposure, which under-exposes
+    # the frame and loses the marker's contrast when the room is dimmer.
+    # Continuous auto-exposure adapts every frame instead.
     auto_exposure: true
 
   file:
@@ -34,10 +30,9 @@ camera:
     # does not spin at 100% CPU while replaying a still image.
     playback_fps: 10.0
 
-# Region of interest, in pixels, cropped before detection.
-# The camera sits on the ceiling rail, so the objects occupy only the white
-# picking paper in the middle of the frame. Cropping raises both accuracy and
-# speed. enabled=false until the real frame size is measured in the lab.
+# Region of interest, in pixels, cropped before detection. Disabled because the
+# paper fills almost the whole frame, so cropping gains little and could cut off
+# a plate or the marker.
 roi:
   enabled: false
   x_px: 0
@@ -52,7 +47,7 @@ detection:
   blur_kernel_px: 5
 
   # The objects are dark plates on white paper, so Otsu on the grayscale image
-  # is far more robust against changing lab lighting than a fixed HSV range.
+  # copes better with changing lab lighting than a fixed HSV range.
   # invert_binary=true makes the objects white and the paper black.
   invert_binary: true
 
@@ -79,9 +74,7 @@ detection:
     # Vertex count tolerance around the nominal count of each polygon.
     vertex_tolerance: 1
 
-# The trained YOLO26-OBB detector of the final submission. main.py
-# builds this unless --detector contour is given; the contour detector stays
-# as the lab fallback behind the same interface.
+# The trained YOLO26-OBB detector, used unless --detector contour is given.
 yolo:
   # Relative to the project root. The .pt twin next to it is for the PC only.
   model_path: "models/shapes_yolo26n_obb.onnx"
@@ -106,10 +99,9 @@ yolo:
   # Half-size of the patch around a box that is searched for paper, which is
   # the brightness reference for "is this plate white?" (color.achromatic).
   paper_search_scale: 1.0
-  # onnxruntime threads. The Pi has four cores; leaving one to the camera
-  # and the operator screen made inference faster *and* steadier (Pi 3 with
-  # the screen running: 4 threads 2.4-3.3 s, 3 threads 2.5-2.8 s,
-  # 2 threads ~3.1 s).
+  # onnxruntime threads. The Pi has four cores; leaving one to the camera and
+  # the operator screen made inference steadier (Pi 3 with the screen running,
+  # 640 px model: 4 threads 2.4-3.3 s, 3 threads 2.5-2.8 s, 2 threads ~3.1 s).
   intra_op_threads: 3
 
 # Corner direction measured inside each detected box (src/vision/
@@ -131,6 +123,15 @@ orientation_refine:
   # its radius towards a tip). It is trusted only within this fraction of the
   # larger box side; a star needs ~0.05, a merged neighbour jumps much further.
   max_center_shift_ratio: 0.2
+
+# Safety layer behind the model: it sometimes reports an unassigned plate as an
+# assigned shape (black square: hexagon, conf 0.90). A plate whose convex outline
+# has fewer corners than min_corners is dropped. Measured hull corners at this
+# tolerance: square 4, star 5, hexagon 6, circle 6-8.
+outline_filter:
+  min_corners: 5
+  # Polygon simplification tolerance, as a fraction of the hull perimeter.
+  corner_tolerance_ratio: 0.03
 
 # Shape symmetry period in degrees, used to normalise the orientation angle.
 # A circle has no meaningful orientation, so its angle is reported as 0.
@@ -157,14 +158,12 @@ shapes:
 color:
   min_saturation: 60
   min_value: 40
-  # A range whose hue_min is greater than hue_max wraps around 0, which is the
-  # only way to express red in OpenCV's 0-179 hue circle.
+  # A range whose hue_min is greater than hue_max wraps around 0, which is how
+  # red is written in OpenCV's 0-179 hue circle.
   #
-  # The plates may be reprinted in any colour, so these ranges only decide what
-  # a colour is *called*; an unlisted hue falls back to the nearest range rather
-  # than to unknown. The orange range was measured on the lab captures,
-  # where the orange circles sit at hue 9-20 and half of them fell
-  # just outside the red range and were being discarded.
+  # Plates may be printed in any colour, so these ranges only decide what a
+  # colour is called; an unlisted hue takes the name of the nearest range. The
+  # orange range was measured on the lab captures (orange circles: hue 9-20).
   ranges:
     red:
       hue_min: 170
@@ -186,10 +185,9 @@ color:
       hue_max: 169
   unknown_label: "unknown"
 
-  # Plates without hue. Every colour except white
-  # is picked, so black and grey plates are named and kept; only white is
-  # rejected. Brightness is judged against the paper right around each plate,
-  # because a fixed number would drift with the lab lighting.
+  # Plates without hue. Every colour except white is picked, so black and grey
+  # plates are named and kept. Brightness is judged against the paper right
+  # around each plate, because a fixed number would drift with the lab lighting.
   # Measured on the lab captures: paper V 119-128, coloured plates V 67-99.
   achromatic:
     # The brightest unsaturated pixels near a plate are the paper.
@@ -225,18 +223,16 @@ comm:
   receive_encoding: "latin-1"
   receive_buffer_bytes: 4094
 
-  # RAPID's string type holds at most 80 characters and silently truncates
-  # longer ones, so every outgoing message is validated against this.
+  # RAPID's string type holds at most 80 characters and cuts off anything longer,
+  # so every outgoing message is checked against this.
   rapid_string_max_length: 80
 
-  # Outgoing message layout, kept as a template rather than hard-coded.
+  # Outgoing message layout.
   # Available fields: id, shape, shape_upper, color, color_upper,
   #                   x_mm, y_mm, z_mm, rz_deg
   # Parsed by robot/MainModule.mod.
   # The robot answers ACK;<id>;OK or ACK;<id>;FAIL.
   message_template: "PICK;{id};{shape};{color};{x_mm};{y_mm};{z_mm};{rz_deg}"
-  # Shape-only layout, kept for a one-line switch:
-  # message_template: "{shape_upper}"
 
   # Substring that marks a successful acknowledgement from the robot.
   ack_success_token: "OK"
@@ -247,13 +243,11 @@ cycle:
   inference_time_limit_sec: 3.0
   # A pick may be retried this many times before the object is skipped.
   max_pick_retries: 2
-  # Seconds the auto mode waits between two sends so the robot can finish its
-  # routine before the next shape is announced.
+  # Seconds src/app/main.py waits between two automatic sends.
   send_interval_sec: 2.0
 
-  # ---- Station (src/app/station.py, Grade level III) ----
-  # A cycle is complete when this many plates have been placed (2 cycles
-  # of 3 plates are examined).
+  # ---- Station (src/app/station.py) ----
+  # A cycle is complete when this many plates have been placed.
   objects_per_cycle: 3
   # How long to wait for a frame taken after the operator's command. Worst
   # case is two frame times (the frame in the model must finish first); a
@@ -268,9 +262,8 @@ cycle:
   verify_timeout_sec: 15.0
   verify_radius_mm: 15.0
 
-# The single ArUco marker glued to the top-centre of the picking paper. It is
-# both the origin and the axis reference of wobj2, so every pick position
-# is expressed relative to it rather than to the raw camera frame.
+# The single ArUco marker on the picking paper. The camera measures every plate
+# relative to it, and coordinate.marker_offset_*_mm gives its position in wobj2.
 aruco:
   dictionary: "DICT_5X5_100"
   marker_length_mm: 100.0
@@ -280,22 +273,20 @@ aruco:
 # in the RAPID routine, so only the pick side needs a live transform.
 coordinate:
   # Pixel -> mm strategy (src/transform/coordinate_mapper.py):
-  #   ratio      -- the taught single-marker ratio; assumes the camera looks
-  #                 exactly straight down.
-  #   homography -- perspective transform from the marker's 4 corners. Chosen
-  #                 because the marker's sides differ by 1.1 % in the image
-  #                 (camera slightly tilted), which gave the ratio method
-  #                 0.5-5 mm errors changing direction across the paper.
+  #   ratio:      the single-marker ratio from the course; assumes the camera
+  #               looks exactly straight down.
+  #   homography: perspective transform from the marker's 4 corners. Chosen
+  #               because the marker's sides differ by 1.1 % in the image
+  #               (camera slightly tilted), which gave the ratio method 0.5-5 mm
+  #               errors changing direction across the paper.
   method: homography
   # Z of the suction cup on top of a plate, in wobj2 (the picking paper).
   # wobj2's origin is on the paper surface; this is the plate's top, jogged
   # with tool1 on a plate.
   # robot/MainModule.mod refuses anything below PICK_Z_MIN_MM (-10).
   pick_z_mm: 6.8
-  # The camera's pixel axes and the robot's wobj2 axes, paired up in the
-  # lab: the camera is mounted turned, so camera X runs against
-  # robot X. Flip whichever of these does not match reality instead of
-  # touching the transform code.
+  # How the marker's axes map onto wobj2, measured in the lab: the camera is
+  # mounted turned, so camera X runs against robot X.
   invert_x: true
   invert_y: false
   swap_xy: false
@@ -303,11 +294,10 @@ coordinate:
   # taught on the paper's corners; jog tool1 onto the marker centre with
   # wobj2 selected and enter the pendant's X/Y here or in the HMI
   # CALIBRATION tab. Re-check whenever the paper may have moved.
-  marker_offset_x_mm: 182.37
-  marker_offset_y_mm: 157.86
+  marker_offset_x_mm: 184.16
+  marker_offset_y_mm: 163.27
 
-# Reduces a detected orientation to the angle the wrist should actually turn
-# to, using each shape's rotational symmetry (see src/transform/orientation.py).
+# Reduces a detected orientation to the angle the wrist should turn to, using each shape's rotational symmetry (see src/transform/orientation.py).
 orientation:
   # The wrist angle treated as "no rotation needed".
   wrist_neutral_deg: 0.0
@@ -323,8 +313,8 @@ orientation:
   # reading the angle the program prints (docs/ROBOT_SETUP.md, step 5).
   place_offset_deg:
     circle: 0.0
-    hexagon: -0.80
-    star: 20.60
+    hexagon: 1.70
+    star: 23.00
 
 # Offline dataset labelling (tools/auto_label.py). None of this runs at pick
 # time: the detector that ships is the trained YOLO26-OBB model, and
@@ -337,10 +327,9 @@ auto_label:
   min_saturation: 90
   morph_kernel_px: 9
 
-  # Smoothing applied to the saturation channel before thresholding. Without
-  # it a ragged mask edge inflates the contour perimeter and circularity
-  # collapses, which silently costs every circle its label (measured: 0.823
-  # unblurred against the 0.86 threshold, 0.896 blurred).
+  # Smoothing applied to the saturation channel before thresholding. Without it
+  # a ragged mask edge lowers circularity and circles lose their label
+  # (measured: 0.823 unblurred against the 0.86 threshold, 0.896 blurred).
   blur_kernel_px: 5
 
   # Area band of one plate at the mounted camera height. Kept wide so a plate
@@ -355,8 +344,7 @@ auto_label:
     - hexagon
     - star
 
-  # Frames whose marker is missing are the pre-marker test shots
-  # and do not belong in the dataset.
+  # Frames without a marker are early test shots and stay out of the dataset.
   require_marker: true
 
   val_split_ratio: 0.2
@@ -365,11 +353,10 @@ auto_label:
 # Offline YOLO26-OBB training on the PC (tools/train_yolo.py). The Pi never
 # trains and has no torch; it only runs the exported ONNX file.
 training:
-  # Pretrained starting point. A bare name makes ultralytics download it into
-  # the current directory, i.e. into the OneDrive project; kept with the runs.
+  # Paths on the training PC; change them on another machine.
+  # Pretrained starting point, kept with the runs.
   base_weights: "C:/Users/ataka/INA700_runs/base_weights/yolo26n-obb.pt"
-  # Kept outside OneDrive: every epoch rewrites checkpoints and plots, which
-  # would otherwise be uploaded to the cloud over and over.
+  # Kept outside the project: every epoch rewrites checkpoints and plots.
   runs_dir: "C:/Users/ataka/INA700_runs"
   run_name: "yolo26n_obb_shapes"
   dataset_yaml: "C:/Users/ataka/INA700_dataset/data.yaml"
@@ -401,23 +388,11 @@ training:
     flip_up_down_probability: 0.5
     flip_left_right_probability: 0.5
 
-  # Where the finished model is copied for delivery (the trained model
-  # must be inside the submission ZIP) and for the Pi.
+  # Where the finished model is copied.
   export_dir: "models"
-  # Training stays at image_size_px; only the exported graph is smaller. The
-  # network is fully convolutional, so the two may differ, and measuring both
-  # on the val split found no accuracy to pay for the speed:
-  #
-  #   input | Pi 3 session.run | found of 74 | wrong class | centre error
-  #     640 |         1373 ms  |     70      |      0      |   3.0 px
-  #     512 |          880 ms  |     65      |      0      |   2.8 px
-  #     416 |          610 ms  |     72      |      0      |   3.3 px
-  #
-  # (3.3 px is ~0.5 mm on the paper, and the reported angle is measured from
-  # the plate outline, so it does not move with this at all: drift vs 640 was
-  # 0.0 deg median, 3.5 deg worst.) The 512 dip is threshold noise, not a
-  # ranking: a few boxes sit just under yolo.min_confidence there.
-  # Back to 640 is this one line plus `python tools/train_yolo.py --export-only`.
+  # Training stays at image_size_px; only the exported graph is smaller, which a
+  # fully convolutional network allows. Measurements are in README.md.
+  # To go back to 640, change this line and run tools/train_yolo.py --export-only.
   export_image_size_px: 416
 
 # Operator screen (src/gui/hmi.py).

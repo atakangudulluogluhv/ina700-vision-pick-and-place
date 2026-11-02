@@ -8,7 +8,7 @@ Grade level III asks for three things this thread owns:
 
 There is no vacuum sensor on the gripper, so the robot cannot tell a
 failed pick from a good one. The camera can: after the robot reports the
-plate placed, a frame taken *afterwards* must no longer show a plate of that
+plate placed, a frame taken afterwards must no longer show a plate of that
 shape at the picked spot. If it still does, the pick failed and is retried.
 """
 
@@ -174,10 +174,24 @@ class CycleController(QueueWorker):
         result = self._wait_for_result(job.job_id)
         if result is None:
             self._log(Severity.ALARM, "no answer from the robot link", "link")
+            self._discard_unsent_jobs()
             self._set_state(CycleState.FAULT)
         elif result.error:
             self._set_state(CycleState.FAULT)
         return result
+
+    def _discard_unsent_jobs(self) -> None:
+        """Forget a job the robot never received.
+
+        Otherwise a robot connecting later would be sent a pick nobody is waiting
+        for, at a position that may be out of date.
+        """
+        while True:
+            try:
+                self._job_queue.get_nowait()
+            except queue.Empty:
+                return
+            self._job_queue.task_done()
 
     def _wait_for_result(self, job_id: int) -> Optional[PickResult]:
         deadline_sec = time.monotonic() + self._settings.result_timeout_sec
@@ -228,8 +242,7 @@ class CycleController(QueueWorker):
         self._last_pick_time_sec = pick_time_sec
         self._log(Severity.INFO, f"{self._target} placed in {pick_time_sec:.1f} s")
         if self._picks_in_cycle >= self._settings.objects_per_cycle:
-            # Every job handed to the robot link has been answered before a
-            # cycle is closed -- the queue.join() idiom of the exercise.
+            # Every job handed to the robot link is answered before a cycle closes.
             self._job_queue.join()
             self._completed_cycles += 1
             self._picks_in_cycle = 0

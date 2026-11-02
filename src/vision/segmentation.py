@@ -1,23 +1,17 @@
 """Strategies that turn a BGR frame into a binary object mask.
 
-Pulling this out of ContourShapeDetector keeps that class closed for
-modification while staying open to a new way of finding objects
-(open/closed, dependency inversion): the detector is handed a Segmenter and never decides for itself
-how pixels become a mask.
+ContourShapeDetector is handed a Segmenter and does not decide how pixels become
+a mask (open/closed, dependency inversion). There are two strategies:
 
-Two strategies exist because the live and the offline job have different
-constraints:
-
-    OtsuSegmenter        Grayscale + Otsu. Used live, where the threshold has
-                         to survive a change of lighting between home and lab.
-    SaturationSegmenter  Saturation channel. Used offline by
-                         tools/auto_label.py, where recall matters more than
-                         speed. On the lab captures the plates measure a
-                         median saturation of 142-255 while the paper, the dark
-                         table and the printed ArUco marker all sit near 12, so
-                         the table can no longer merge with a plate and cost it
-                         its label -- which is what held grayscale Otsu to
-                         roughly 60% recall on that set.
+    OtsuSegmenter        Grayscale + Otsu. Used by the contour fallback at run
+                         time, because it picks its threshold per frame and so
+                         copes with changing light.
+    SaturationSegmenter  Saturation channel. Used offline by tools/auto_label.py.
+                         On the lab captures the plates measure a median
+                         saturation of 142-255 while the paper, the dark table
+                         and the printed marker sit near 12, so the table cannot
+                         merge with a plate. Grayscale Otsu reached only about
+                         60 % recall on that set for this reason.
 """
 
 from abc import ABC, abstractmethod
@@ -75,11 +69,9 @@ class SaturationSegmenter(Segmenter):
         """Return the object mask of one frame."""
         saturation = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2HSV)[:, :, 1]
 
-        # Blurring before the threshold is not cosmetic. Circularity divides by
-        # the squared perimeter, so a ragged mask edge inflates the perimeter
-        # and collapses the measurement: on the lab captures an orange
-        # circle scored 0.823 unblurred against a threshold of 0.86 and was
-        # thrown away, while the same circle scores 0.896 once smoothed.
+        # Circularity divides by the squared perimeter, so a ragged mask edge
+        # lowers it: on the lab captures an orange circle scored 0.823 unblurred
+        # against a threshold of 0.86, and 0.896 once smoothed.
         saturation = cv2.GaussianBlur(
             saturation, (self._blur_kernel_px, self._blur_kernel_px), 0
         )

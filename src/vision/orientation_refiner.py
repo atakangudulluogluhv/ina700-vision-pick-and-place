@@ -1,25 +1,17 @@
-"""Shape orientation measured from the plate outline inside a detected box.
+"""Shape orientation and pick point, measured from the plate outline inside a box.
 
-Why this exists (measured on the lab captures): the angle of an oriented
-bounding box is only defined up to the box's own symmetry, not the shape's.
-A five-pointed star's box is almost square (aspect 0.95), so when width and
-height swap the box angle jumps by 90 deg, which is 18 deg off modulo the
-star's 72 deg period -- no amount of training fixes that. For the hexagon the
-box sits a constant 30 deg away from the corners and the model's box angle
-carries ~7 deg of noise on top.
+An oriented box's angle is only defined up to the box's own symmetry. A star's box
+is almost square (aspect 0.95), so when width and height swap the angle jumps by
+90 deg, which is 18 deg off modulo the star's 72 deg period. On the hexagon the box
+sits 30 deg from the corners, with ~7 deg of noise.
 
-The trained model still decides *what* and *where* every plate is. This
-step only looks inside the model's box and measures *which way* the plate's
-corners point, so every shape reports the same thing: the direction of one of
-its corners (hexagon) or tips (star), in image degrees, clockwise because the
-image y axis points down. OrientationNormalizer then folds that angle by the
-shape's symmetry period.
+The model still decides what and where each plate is. This step measures the
+direction of one corner (hexagon) or tip (star), in image degrees, clockwise because
+the image y axis points down. OrientationNormalizer then folds it by the symmetry
+period.
 
-The same outline also gives the pick point (measured in the lab):
-a five-pointed star is not symmetric inside its box -- one tip reaches the
-top edge, two tips stop short of the bottom -- so the box centre sits ~0.1 of
-the star radius towards a tip. The robot picked stars a few mm off while
-circles landed centred. The outline's area centroid is the true centre.
+The outline's centroid is also the pick point, because a star's box centre sits ~0.1
+of its radius towards a tip.
 """
 
 import math
@@ -109,6 +101,21 @@ class VertexOrientationEstimator:
         center_x_px, center_y_px = self._plate_center_px(outline, detection, origin_px)
         return PlateMeasurement(center_x_px, center_y_px, self._corner_direction_deg(outline, period_deg))
 
+    def count_hull_corners(self, frame: np.ndarray, detection: Detection, tolerance_ratio: float) -> Optional[int]:
+        """Corners of the plate's convex outline, or None when no outline is found.
+
+        The hull is used because a dark plate's outline is jagged: its inflated
+        perimeter would make the simplification tolerance meaninglessly large.
+        """
+        patch, origin_px = self._search_patch(frame, detection)
+        if patch.size == 0:
+            return None
+        outline = self._plate_outline(patch, detection, origin_px)
+        if outline is None:
+            return None
+        hull = cv2.convexHull(outline.astype(np.int32).reshape(-1, 1, 2))
+        return len(cv2.approxPolyDP(hull, tolerance_ratio * cv2.arcLength(hull, True), True))
+
     def _plate_center_px(self, outline: np.ndarray, detection: Detection, origin_px) -> tuple[float, float]:
         """Area centroid of the outline in frame pixels, or the box centre if it jumped too far."""
         moments = cv2.moments(outline.astype(np.float32))
@@ -185,6 +192,37 @@ class VertexOrientationEstimator:
 
     def __str__(self) -> str:
         return f"VertexOrientationEstimator(periods={self._symmetry_periods_deg})"
+
+
+class OutlineCornerFilter(ShapeDetector):
+    """Decorator: drops detections whose plate outline has too few corners.
+
+    A runtime safety layer against a square or triangle the model mistook for an
+    assigned shape; it does not change what the model itself detects. A plate
+    with no measurable outline is kept, because the model did see it.
+    """
+
+    def __init__(
+        self,
+        inner: ShapeDetector,
+        estimator: VertexOrientationEstimator,
+        min_corners: int,
+        tolerance_ratio: float,
+    ) -> None:
+        self._inner = inner
+        self._estimator = estimator
+        self._min_corners = int(min_corners)
+        self._tolerance_ratio = float(tolerance_ratio)
+
+    def detect(self, frame: np.ndarray) -> list[Detection]:
+        return [detection for detection in self._inner.detect(frame) if self._is_plausible(frame, detection)]
+
+    def _is_plausible(self, frame: np.ndarray, detection: Detection) -> bool:
+        corners = self._estimator.count_hull_corners(frame, detection, self._tolerance_ratio)
+        return corners is None or corners >= self._min_corners
+
+    def __str__(self) -> str:
+        return f"{self._inner} + OutlineCornerFilter(min_corners={self._min_corners})"
 
 
 class OrientationRefiningDetector(ShapeDetector):

@@ -1,17 +1,16 @@
 """Build the hand-in ZIP the assignment demands after the examination.
 
 The assignment accepts exactly one file, FinalProject_<StudentName>.zip, holding
-the complete program files, the trained AI model and a Pack-and-Go file of the
-robot station taken at the examination. A submission that misses any of them
-"will be reported as failed. No resubmission is allowed", so this tool
-refuses to write the real archive unless every part is present, and re-opens
-what it wrote to prove it.
+the complete program files and the trained AI model. A submission that misses
+any of them "will be reported as failed. No resubmission is allowed", so this
+tool re-opens what it wrote and checks that every required part is inside.
 
-The Pack-and-Go has to come from the examination itself, which is why it
-is a required argument and never picked up from disk by itself.
+The examiner confirmed that the Pack-and-Go file is not needed for this hand-in,
+so it stays optional and is never picked up from disk by itself.
 
+    python tools/make_submission.py
     python tools/make_submission.py --pack-and-go D:/exam/INA700_station.rspag
-    python tools/make_submission.py --dry-run          # rehearsal, no Pack-and-Go
+    python tools/make_submission.py --dry-run          # rehearsal, name marked DRYRUN
 
 Run it from the copy that matches what ran in the lab: pull the Pi's changes
 back to this machine first, or pass --source with the folder holding them.
@@ -121,11 +120,9 @@ def archive_name(student_name: str, dry_run: bool) -> str:
     return f"{ARCHIVE_PREFIX}{student_name}{suffix}.zip"
 
 
-def validate_pack_and_go(path: Path | None, dry_run: bool) -> Path | None:
+def validate_pack_and_go(path: Path | None) -> Path | None:
     if path is None:
-        if dry_run:
-            return None
-        raise ValueError("--pack-and-go is required; the station must be packed at the examination")
+        return None
     if not path.is_file():
         raise FileNotFoundError(f"Pack-and-Go file not found: {path}")
     if path.suffix.lower() != PACK_AND_GO_SUFFIX:
@@ -178,20 +175,20 @@ def plan_entries(source_root: Path, pack_and_go: Path | None) -> tuple[list[tupl
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Build the INA700 hand-in ZIP.")
     parser.add_argument("--pack-and-go", type=Path, default=None,
-                        help="RobotStudio .rspag saved at the examination")
+                        help="optional RobotStudio .rspag to include")
     parser.add_argument("--source", type=Path, default=PROJECT_ROOT,
                         help="project folder to pack (default: this repository)")
     parser.add_argument("--student", default=DEFAULT_STUDENT_NAME)
     parser.add_argument("--output-dir", type=Path, default=Path.cwd())
     parser.add_argument("--dry-run", action="store_true",
-                        help="rehearse without a Pack-and-Go; the ZIP name is marked DRYRUN")
+                        help="rehearse; the ZIP name is marked DRYRUN")
     return parser.parse_args(argv)
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     source_root = args.source.resolve()
-    pack_and_go = validate_pack_and_go(args.pack_and_go, args.dry_run)
+    pack_and_go = validate_pack_and_go(args.pack_and_go)
     entries, required = plan_entries(source_root, pack_and_go)
     model_path = source_root / model_relative_path(source_root)
 
@@ -206,8 +203,8 @@ def main(argv: list[str] | None = None) -> int:
         for problem in problems:
             print(f"[make_submission] ERROR {problem}")
         return 1
-    if pack_and_go is None:
-        print("[make_submission] DRY RUN: no Pack-and-Go inside, do NOT hand this file in")
+    if args.dry_run:
+        print("[make_submission] DRY RUN: do NOT hand this file in")
     else:
         print(f"[make_submission] OK, ready to hand in ({output_path.stat().st_size / 1e6:.1f} MB)")
     return 0

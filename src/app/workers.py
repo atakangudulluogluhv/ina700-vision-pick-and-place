@@ -99,7 +99,6 @@ class InferenceWorker(QueueWorker):
         put_latest(self._detection_queue, DetectionPacket(
             packet.frame_id, packet.frame, packet.captured_at_sec, tuple(detections), inference_time_sec))
 
-
     def _report_limit_change(self, over_limit: bool, inference_time_sec: float) -> None:
         """Log crossings of the limit only. One line per slow frame would bury
         every other event (an "alarm flood" in ISA-18.2 terms); the console
@@ -244,4 +243,3 @@ class RobotLinkWorker(StoppableWorker):
 
     def _on_stop(self) -> None:
         self._server.close()
-

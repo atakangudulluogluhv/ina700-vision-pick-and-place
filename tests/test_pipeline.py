@@ -5,8 +5,7 @@ Run from the project root:
     python -m pytest tests -q
     python tests/test_pipeline.py        (works without pytest installed)
 
-The shape tests draw their own synthetic figures rather than depending on a
-photograph, so they keep working before any dataset has been captured.
+The shape tests draw their own synthetic figures, so they need no photographs.
 """
 
 import math
@@ -36,9 +35,10 @@ from src.vision.camera_scaled import DownscalingCamera  # noqa: E402
 from src.vision.color import ColorClassifier  # noqa: E402
 from src.vision.orientation_refiner import (  # noqa: E402
     OrientationRefiningDetector,
+    OutlineCornerFilter,
     VertexOrientationEstimator,
 )
-from src.vision.segmentation import OtsuSegmenter, SaturationSegmenter
+from src.vision.segmentation import OtsuSegmenter
 from src.vision.shape_detector_contour import ContourShapeDetector  # noqa: E402
 from tools.fake_robot_client import verdict_for  # noqa: E402
 
@@ -124,7 +124,7 @@ def default_segmenter(config):
 
 def canvas_with_marker(rotation_deg: float = 0.0):
     """A white canvas holding one DICT_5X5_100 marker, optionally rotated in
-    place -- this is what "the marker (or an object) is not lying straight"
+    place. This is what "the marker (or an object) is not lying straight"
     looks like on the picking paper.
     """
     dictionary = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_5X5_100)
@@ -265,7 +265,7 @@ def test_ratio_calibration_matches_marker_corner_geometry():
     """Ground truth independent of rotation: for any square marker, corner
     top-right always sits at (+side/2, -side/2) in the marker's own local
     axes. Checking this at several rotations is the real proof that the
-    axes come from the marker itself, not from the camera frame -- exactly
+    axes come from the marker itself, not from the camera frame, exactly
     what a crooked object placement needs.
     """
     config = marker_axes_config()
@@ -288,7 +288,7 @@ def test_ratio_calibration_matches_marker_corner_geometry():
 
 def test_direction_to_world_deg_zero_along_markers_own_axis():
     """Probing exactly along the marker's own (possibly rotated) x-axis must
-    read back as a world-frame heading of 0 degrees -- the guarantee that
+    read back as a world-frame heading of 0 degrees, the guarantee that
     lets a crooked object still be measured relative to the marker, not the
     camera frame.
     """
@@ -603,6 +603,29 @@ def test_refining_detector_moves_star_pick_point_to_its_true_centre():
     assert abs(refined[0].center_y_px - CANVAS_CENTER_PX) < 1.0, refined[0].center_y_px
 
 
+def filtered_shapes(points, reported_shape):
+    """What survives the corner filter when the model reports this plate as reported_shape."""
+    inner = FixedDetector([box_detection(reported_shape)])
+    corner_filter = OutlineCornerFilter(inner, build_orientation_estimator(), min_corners=5, tolerance_ratio=0.03)
+    return [detection.shape for detection in corner_filter.detect(rotated_canvas(points, 23.0))]
+
+
+def test_corner_filter_drops_square_and_triangle_reported_as_hexagon():
+    assert filtered_shapes(regular_polygon_points(4), "hexagon") == []
+    assert filtered_shapes(regular_polygon_points(3), "hexagon") == []
+
+
+def test_corner_filter_keeps_assigned_shapes():
+    assert filtered_shapes(regular_polygon_points(6), "hexagon") == ["hexagon"]
+    assert filtered_shapes(star_points(), "star") == ["star"]
+
+
+def test_corner_filter_keeps_plate_without_measurable_outline():
+    inner = FixedDetector([box_detection("hexagon")])
+    corner_filter = OutlineCornerFilter(inner, build_orientation_estimator(), min_corners=5, tolerance_ratio=0.03)
+    assert len(corner_filter.detect(blank_canvas())) == 1
+
+
 def test_refining_detector_keeps_angle_when_nothing_can_be_measured():
     inner = FixedDetector([box_detection("star", 12.0)])
     refined = OrientationRefiningDetector(inner, build_orientation_estimator()).detect(blank_canvas())
@@ -618,16 +641,16 @@ def configured_formatter():
 
 
 def test_configured_message_is_accepted_by_the_robot():
-    message = configured_formatter().format(7, "hexagon", "blue", -120.44, 85.06, -208.0, -23.51)
-    assert message == "PICK;7;hexagon;blue;-120.4;85.1;-208.0;-23.5"
+    message = configured_formatter().format(7, "hexagon", "blue", -120.44, 85.06, 6.8, -23.51)
+    assert message == "PICK;7;hexagon;blue;-120.4;85.1;6.8;-23.5"
     assert verdict_for(message) == ("7", "OK")
 
 
 def test_robot_refuses_what_it_cannot_do_safely():
     formatter = configured_formatter()
-    too_far = formatter.format(1, "star", "green", 900.0, 0.0, -208.0, 0.0)
+    too_far = formatter.format(1, "star", "green", 900.0, 0.0, 6.8, 0.0)
     too_deep = formatter.format(2, "star", "green", 0.0, 0.0, -300.0, 0.0)
-    no_cavity = formatter.format(3, "square", "green", 0.0, 0.0, -208.0, 0.0)
+    no_cavity = formatter.format(3, "square", "green", 0.0, 0.0, 6.8, 0.0)
     assert verdict_for(too_far) == ("1", "FAIL")
     assert verdict_for(too_deep) == ("2", "FAIL")
     assert verdict_for(no_cavity) == ("3", "FAIL")

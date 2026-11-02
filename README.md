@@ -32,7 +32,9 @@ dataset and exported to ONNX. The Pi runs it with `onnxruntime` only, without
 torch. An OBB gives class, centre and box angle in one pass, but the box
 angle can't tell which way a star is pointing, so the heading is measured
 afterwards from the plate's contour inside the box
-(`src/vision/orientation_refiner.py`).
+(`src/vision/orientation_refiner.py`). The model has only the three assigned
+classes. It can still mistake another plate for one of them, so a contour check
+behind it drops plates with fewer than five corners.
 
 **Dataset.** 197 frames captured in the lab, labelled offline with a
 classical-CV pipeline (`tools/auto_label.py`) and split into train and
@@ -43,6 +45,9 @@ validation sets with a fixed seed.
 | mAP50 / mAP50-95 (val) | 0.984 / 0.938 |
 | Val objects found | 70 of 74, no wrong classes |
 | Centre error (median) | 2.9 px, about 0.5 mm |
+
+These are the numbers at 640 px input; the 416 px model used on the Pi is in the
+speed table below.
 
 **Calibration.** One 100 mm ArUco marker sits on the paper and is located in
 every frame, so a bumped camera doesn't silently corrupt the coordinates.
@@ -86,17 +91,16 @@ halved that, with no real loss in accuracy on the validation set:
 | 512 | 880 ms  | 65 / 74 | 2.8 px |
 | 416 | 610 ms  | 72 / 74 | 3.3 px |
 
-On the lab's Pi 4 with the 416 model, during a full run with the HMI open,
-inference took 354–1041 ms per frame, median 461 ms (1537 frames,
-2026-11-01). The time is printed for every frame and shown in the HMI.
+On the lab's Pi 4 with the 416 model and the HMI open, inference took
+209–1386 ms per frame, median 471 ms (11654 frames on the examination day,
+2026-11-02). The time is printed for every frame and shown in the HMI.
 (The screenshot above is from an earlier run on a Pi 3.)
 
 ## Status
 
 The full loop runs on the real robot: live detection, operator selection by
-shape and colour, picking, placing and retry. In the last lab run
-(2026-11-01) six plates were placed over two cycles, all three shapes,
-with no failed pick.
+shape and colour, picking, placing and retry. The logs of the examination day
+(2026-11-02) show 23 plates placed and 7 cycles completed, with no failed pick.
 
 Known limitations:
 
@@ -105,9 +109,11 @@ Known limitations:
   comes from the pixel-to-robot mapping; candidates are a small rotation
   between the marker and `wobj2`, the sheet shifting during a run, and the
   slightly tilted table. The retry covers a failed pick.
-- An unassigned triangle was once detected as a hexagon with confidence 0.53,
-  just above the 0.5 threshold. The fix is to retrain with the distractor
-  shapes as negatives.
+- The model sometimes reports an unassigned plate as an assigned shape: a
+  triangle as a hexagon (confidence 0.53), a black square as a hexagon (0.90).
+  The confidence threshold (0.65) and the corner check catch these at run time,
+  but the proper fix is to retrain with the distractor shapes as negatives. The
+  corner check was tested on a real square, not yet on a real triangle.
 
 ## Running
 
@@ -141,8 +147,9 @@ The tests (pytest, no camera or robot needed) also run on every push through Git
 | `tools/aruco_probe.py` | Diagnose marker detection (dictionary, print quality, exposure) |
 | `tools/fake_robot_client.py` | Python version of `robot/MainModule.mod` for socket tests |
 | `tools/setup_pi.sh` | Pi setup: Python packages and the static IP on the robot subnet |
+| `tools/lab_net_check.sh` | Keep the Pi's static IP up on a network without DHCP |
 | `tools/start_station.sh` | One-click lab start: USB 3.0 camera, server address, old process, robot ping, then the HMI |
-| `tools/make_submission.py` | Build and verify the hand-in ZIP (program, model, Pack-and-Go) |
+| `tools/make_submission.py` | Build and verify the hand-in ZIP (program and model) |
 
 ## Setup
 
@@ -192,4 +199,4 @@ docs/        robot setup, calibration, figures, printable ArUco marker
 
 `MainModule.mod` relies on a separate socket module on the controller
 (`ServerCommuncatio.sys`, supplying `RobotAsClientConnect` and friends). It was
-provided by the course and is not included in this repository.
+provided by the course, so it is not published in the public repository.

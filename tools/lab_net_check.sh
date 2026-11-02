@@ -2,16 +2,16 @@
 # Harden the Pi's Ethernet setup for the lab, where no DHCP server exists.
 #
 # The problem: at the lab "Wired connection 1" runs DHCP that never answers.
-# NetworkManager only tolerates a failed address family while the *other* one
+# NetworkManager only tolerates a failed address family while the other one
 # succeeds, so with IPv6 unable to complete either, the whole profile goes down
-# and takes the manual 192.168.125.2 with it -- the Pi is then only reachable
-# after the fall-back profile "robot-net" takes over.
+# and takes the manual 192.168.125.2 with it. The Pi is then only reachable after
+# the fall-back profile "robot-net" takes over.
 #
 # The fix: ipv4.may-fail=yes plus ipv6.method=link-local, which always
 # succeeds, so the profile stays up and keeps its manual IPv4 address while
-# DHCP fails in the background.  Phase 1 proves that on a throwaway veth pair
-# -- a real 802-3-ethernet device with carrier, just with nothing to talk to --
-# before Phase 2 touches the real profile.
+# DHCP fails in the background. Step 1 tests that on a throwaway veth pair (a
+# real 802-3-ethernet device with carrier and nothing to talk to) before step 2
+# touches the real profile.
 #
 # The active eth0 connection is never reactivated here, so running this cannot
 # drop an SSH session.  The new settings take effect at the next activation,
@@ -29,7 +29,7 @@ DHCP_TIMEOUT_SEC=10
 SETTLE_SEC=8
 
 if [ "$(id -u)" -ne 0 ]; then
-    echo "Run me with sudo:  sudo bash ~/lab_net_check.sh" >&2
+    echo "Run with sudo:  sudo bash tools/lab_net_check.sh" >&2
     exit 1
 fi
 

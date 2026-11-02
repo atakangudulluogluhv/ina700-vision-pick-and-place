@@ -2,12 +2,11 @@
 # One-click start of the lab station: pre-flight checks, then the operator
 # screen (GUI + robot server threads, src/app/station.py).
 #
-# Every lab session lost minutes to the same three faults -- the camera fell
-# back to USB 2.0 (pypylon refuses it), eth0 had no 192.168.125.2 (the server
-# cannot bind), or an old station still held the camera and port 5000. This
-# script finds each one before the GUI starts and says what to do; a hard
-# fault waits for Enter and checks again, so the cable can be fixed without
-# closing the window.
+# It catches the usual start-up faults before the GUI opens: the camera fell back
+# to USB 2.0 (pypylon refuses it), eth0 has no 192.168.125.2 (the server cannot
+# bind), or an old station still holds the camera and port 5000. A hard fault
+# waits for Enter and checks again, so the cable can be fixed without closing
+# the window.
 #
 #   tools/start_station.sh                   checks, then the station (fullscreen)
 #   tools/start_station.sh --check-only      checks only

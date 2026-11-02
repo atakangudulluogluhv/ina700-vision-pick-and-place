@@ -331,7 +331,7 @@ class JobPanel:
 # ----------------------------------------------------------------------
 
 class ObjectTable:
-    """Every detected plate with its robot pose -- the GUI requirement of the brief."""
+    """Every detected plate with its position and orientation in wobj2."""
 
     COLUMNS = (("id", "#", 40), ("shape", "Shape", 90), ("color", "Colour", 80),
                ("x", "X [mm]", 80), ("y", "Y [mm]", 80), ("rz", "Rz [deg]", 80), ("conf", "Conf", 60))

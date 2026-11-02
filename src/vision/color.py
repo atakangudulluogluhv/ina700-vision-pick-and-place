@@ -84,9 +84,9 @@ class ColorClassifier:
 
         Used only by the classical contour fallback, where it keeps the
         black-and-white ArUco marker (a perfect "square" contour) out of the
-        picks -- at the price of also missing black and grey plates. The YOLO
-        path uses is_white instead: the trained model already decides what is a
-        plate, so only white needs rejecting there.
+        picks, at the price of also missing black and grey plates. The YOLO path
+        uses is_white instead: the model already decides what is a plate, so only
+        white needs rejecting there.
         """
         return self._median_hue(frame_bgr, mask) is not None
 

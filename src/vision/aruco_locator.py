@@ -1,9 +1,9 @@
-"""Finds the single ArUco marker that anchors the picking work object.
+"""Finds the single ArUco marker that plate positions are measured against.
 
-The marker sits at the top-centre of the white picking paper and is both the
-origin and the axis reference of wobj2. Locating it
-every frame, instead of once at startup, means a camera bump or a slightly
-shifted paper does not silently corrupt every pick coordinate afterwards.
+The marker lies on the white picking paper. Its centre is the origin of the
+camera's measurements and its edges give the scale and the axes; the marker's
+position in wobj2 is coordinate.marker_offset_*_mm. It is located in every frame,
+so a bumped camera does not corrupt the positions that follow.
 """
 
 from typing import Optional
@@ -13,8 +13,6 @@ import numpy as np
 
 from src.core.config import Config
 
-# A marker is a square, which is a geometric fact about ArUco, not a tunable
-# threshold, so it stays a code constant rather than moving to settings.yaml.
 ARUCO_SIDE_COUNT = 4
 
 

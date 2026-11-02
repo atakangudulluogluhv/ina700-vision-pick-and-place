@@ -1,8 +1,7 @@
 """Camera decorator that shrinks every frame by a whole-number factor.
 
-The network always sees a 416 px letterboxed image, so a 5 MP frame buys no
-detection accuracy -- it only makes everything around the network slower
-(ArUco search, letterbox resize, colour and orientation measurement). Halving
+The network always sees a 416 px letterboxed image, so a 5 MP frame adds no
+detection accuracy and only slows down everything around the network (ArUco search, letterbox resize, colour and orientation measurement). Halving
 the frame roughly quarters that work while the marker (~260 px) and the plates
 (~140 px) stay far larger than the algorithms need.
 
@@ -33,8 +32,8 @@ class DownscalingCamera(CameraSource):
             return None
         height_px, width_px = frame.shape[:2]
         target_size = (width_px // self._downscale_factor, height_px // self._downscale_factor)
-        # INTER_AREA averages whole pixel blocks, so edges stay clean instead
-        # of aliasing -- the orientation refiner measures along those edges.
+        # INTER_AREA averages whole pixel blocks, so the edges the orientation
+        # refiner measures along stay clean.
         return cv2.resize(frame, target_size, interpolation=cv2.INTER_AREA)
 
     def release(self) -> None:

@@ -1,8 +1,7 @@
 """The real-world target of one pick: a position and a wrist angle, in mm/deg.
 
-Mirrors Detection's shape: private attributes behind
-validating properties, so a non-finite coordinate surfaces here as a bug
-instead of silently reaching the robot as a bad target.
+Built like Detection: private attributes behind validating properties, so a
+non-finite coordinate fails here instead of reaching the robot.
 """
 
 import numpy as np

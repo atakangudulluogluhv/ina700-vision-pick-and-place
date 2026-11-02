@@ -2,13 +2,13 @@
 
 Two strategies sit behind the same interface (open/closed):
 
-* RatioCalibration -- the teacher's single-marker method: one mm-per-pixel
+* RatioCalibration: the single-marker method from the course, one mm-per-pixel
   ratio, valid only while the camera looks exactly straight down.
-* HomographyCalibration -- maps the image onto the marker plane with the
-  perspective transform defined by the marker's four corners. It also holds
-  when the camera is slightly tilted: in the lab the marker's
-  sides differed by 1.1 % in the image, which the ratio method turned into
-  0.5-5 mm errors that changed direction across the paper.
+* HomographyCalibration: maps the image onto the marker plane with the
+  perspective transform defined by the marker's four corners, which also holds
+  for a slightly tilted camera. In the lab the marker's sides differed by 1.1 %
+  in the image, which gave the ratio method 0.5-5 mm errors that changed
+  direction across the paper.
 
 coordinate.method in settings.yaml picks one (src/app/main.py).
 """
@@ -24,9 +24,8 @@ from src.core.config import Config
 from src.vision.aruco_locator import MarkerPose
 from src.transform.world_pose import WorldPose
 
-# Purely an implementation detail of the two-point angle probe below, not a
-# physical measurement, so it stays a code constant (like main.py's
-# MARKER_RADIUS_PX) rather than moving to settings.yaml.
+# Length of the two-point angle probe below. Not a physical measurement, so it
+# is not in settings.yaml.
 ANGLE_PROBE_DISTANCE_PX = 50.0
 
 
@@ -95,8 +94,8 @@ class MarkerFrameCalibration(CoordinateMapper):
     def direction_to_world_deg(self, center_x_px: float, center_y_px: float,
                                 pixel_angle_deg: float, marker_pose: MarkerPose) -> float:
         """Move two points along the object's axis into the world and measure
-        the angle there, instead of converting the angle number directly --
-        which would be wrong wherever the axes are swapped or flipped.
+        the angle there. Converting the angle number directly would be wrong
+        wherever the axes are swapped or flipped.
         """
         angle_rad = math.radians(pixel_angle_deg)
         probe_x_px = center_x_px + ANGLE_PROBE_DISTANCE_PX * math.cos(angle_rad)
@@ -116,12 +115,11 @@ class MarkerFrameCalibration(CoordinateMapper):
 
 
 class RatioCalibration(MarkerFrameCalibration):
-    """The single-marker ratio method taught in the exercise, extended to 2D.
+    """The single-marker ratio method from the course, extended to 2D.
 
-    The marker's own corners define the local axes, so a marker that is not
-    perfectly aligned with the camera frame -- or an object that is not lying
-    straight -- is still measured correctly. One ratio for the whole image,
-    so it assumes the camera looks straight down.
+    The marker's own corners define the local axes, so a marker or an object at
+    an angle to the camera frame is still measured correctly. There is one ratio
+    for the whole image, so it assumes the camera looks straight down.
     """
 
     def _to_marker_mm(self, pixel_x_px: float, pixel_y_px: float, marker_pose: MarkerPose):

@@ -1,17 +1,13 @@
-"""Contour based shape detector used for the lab exercise.
+"""Classical contour based shape detector.
 
-Why classical CV here: no trained model exists yet and no dataset has been
-captured, so the lab session cannot run YOLO. This module is NOT the detector
-of the final submission -- there the trained YOLO26-OBB model takes over behind
-the same ShapeDetector interface. The same code is reused
-afterwards as the core of tools/auto_label.py.
+This is not the main detector; that is the trained YOLO26-OBB model behind the
+same ShapeDetector interface. This one has two uses: it produces the training
+labels in tools/auto_label.py, and it is the fallback behind --detector contour.
 
-Segmentation is injected rather than hard-coded, so the same classification
-code serves both the live run (OtsuSegmenter) and tools/auto_label.py
-(SaturationSegmenter) -- see src/vision/segmentation.py.
+Segmentation is injected: the fallback uses OtsuSegmenter and tools/auto_label.py
+uses SaturationSegmenter (src/vision/segmentation.py).
 
-Classification never relies on the vertex count alone. Three measurements are
-combined, each of which separates a different pair of shapes:
+Three measurements are combined, each separating different shapes:
 
     circularity = 4*pi*area / perimeter^2   -> separates the circle
     solidity    = area / convex_hull_area   -> separates the 5-pointed star
@@ -100,12 +96,10 @@ class ContourShapeDetector(ShapeDetector):
         if shape_name is None:
             return None
 
-        # Anything that is not white is a plate to be picked, whatever its
-        # colour: the plates may be reprinted in colours nobody configured, so
-        # rejecting an unrecognised *name* would silently hide real objects.
-        # Chroma alone is a safe gate -- the white paper and the black-and-white
-        # ArUco marker have none, and the marker border would otherwise pass as
-        # a perfectly good square contour and compete as a pick target.
+        # The colour name is never a reason to drop a plate, since plates may be
+        # printed in any colour. Only regions without colour are dropped: this
+        # keeps out the ArUco marker, whose border would otherwise pass as a
+        # square contour.
         color_mask = self._contour_mask(contour, frame.shape)
         if not self._color_classifier.is_chromatic(frame, color_mask):
             return None

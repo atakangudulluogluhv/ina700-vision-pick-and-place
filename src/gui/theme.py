@@ -13,7 +13,7 @@ The rules the palette follows:
 
 import tkinter.font as tkfont
 
-# Neutral greys -- the whole screen at rest.
+# Neutral greys: the whole screen at rest.
 BACKGROUND = "#D4D7DB"
 PANEL = "#E9EBED"
 PANEL_BORDER = "#B7BCC2"
